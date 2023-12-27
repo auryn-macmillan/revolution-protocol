@@ -45,6 +45,8 @@
   },
   "dependencies": {
     "@cobuild/protocol-rewards": "workspace:*",
+    "@gnosis.pm/safe-contracts": "^1.3.0",
+    "@gnosis.pm/zodiac": "^3.5.0",
     "@openzeppelin/contracts": "5.0.0",
     "@openzeppelin/contracts-upgradeable": "5.0.0",
     "@wagmi/cli": "^1.5.2",

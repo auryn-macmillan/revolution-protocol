@@ -26,15 +26,18 @@
 //
 // MODIFICATIONS
 // DAOExecutor.sol modifies Timelock to use Solidity 0.8.x receive(), fallback(), and built-in over/underflow protection
-// This contract acts as executor of Revolution DAO governance and its treasury, so it has been modified to accept ETH.
+// This contract forwards all transactions on to an Avatar contract (like a Safe).
 
 pragma solidity ^0.8.22;
 
 import { Initializable } from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import { IRevolutionBuilder } from "../interfaces/IRevolutionBuilder.sol";
+import { IAvatar } from "@gnosis.pm/zodiac/contracts/interfaces/IAvatar.sol";
+import { Enum } from "@gnosis.pm/safe-contracts/contracts/common/Enum.sol";
 
 contract DAOExecutor is Initializable {
     event NewAdmin(address indexed newAdmin);
+    event NewAvatar(address indexed avatar);
     event NewPendingAdmin(address indexed newPendingAdmin);
     event NewDelay(uint256 indexed newDelay);
     event CancelTransaction(
@@ -63,6 +66,7 @@ contract DAOExecutor is Initializable {
     );
 
     address public admin;
+    address public avatar;
     address public pendingAdmin;
     uint256 public delay;
 
@@ -80,11 +84,20 @@ contract DAOExecutor is Initializable {
     uint256 public constant MAXIMUM_DELAY = 30 days;
 
     ///                                                          ///
+    ///                          MODIFIERS                       ///
+    ///                                                          ///
+
+    modifier onlyAvatar() {
+        require(msg.sender == avatar, "DAOExecutor::onlyAvatar: Only avatar may call this function.");
+        _;
+    }
+
+    ///                                                          ///
     ///                         CONSTRUCTOR                      ///
     ///                                                          ///
 
     /// @param _manager The contract upgrade manager address
-    constructor(address _manager) payable initializer {
+    constructor(address _manager) initializer {
         manager = IRevolutionBuilder(_manager);
     }
 
@@ -95,7 +108,7 @@ contract DAOExecutor is Initializable {
     /// @notice Initializes an instance of a DAO's treasury
     /// @param _admin The DAO's address
     /// @param _timelockDelay The time delay to execute a queued transaction
-    function initialize(address _admin, uint256 _timelockDelay) external initializer {
+    function initialize(address _admin, uint256 _timelockDelay, address _avatar) external initializer {
         require(_timelockDelay >= MINIMUM_DELAY, "DAOExecutor::constructor: Delay must exceed minimum delay.");
         require(_timelockDelay <= MAXIMUM_DELAY, "DAOExecutor::setDelay: Delay must not exceed maximum delay.");
 
@@ -106,10 +119,10 @@ contract DAOExecutor is Initializable {
 
         admin = _admin;
         delay = _timelockDelay;
+        avatar = _avatar;
     }
 
-    function setDelay(uint256 delay_) public {
-        require(msg.sender == address(this), "DAOExecutor::setDelay: Call must come from DAOExecutor.");
+    function setDelay(uint256 delay_) public onlyAvatar() {
         require(delay_ >= MINIMUM_DELAY, "DAOExecutor::setDelay: Delay must exceed minimum delay.");
         require(delay_ <= MAXIMUM_DELAY, "DAOExecutor::setDelay: Delay must not exceed maximum delay.");
         delay = delay_;
@@ -130,6 +143,12 @@ contract DAOExecutor is Initializable {
         pendingAdmin = pendingAdmin_;
 
         emit NewPendingAdmin(pendingAdmin);
+    }
+
+    function setAvatar(address _avatar) public onlyAvatar() {
+        avatar = _avatar;
+
+        emit NewAvatar(_avatar);
     }
 
     function queueTransaction(
@@ -192,7 +211,7 @@ contract DAOExecutor is Initializable {
         }
 
         // solium-disable-next-line security/no-call-value
-        (bool success, bytes memory returnData) = target.call{ value: value }(callData);
+        (bool success, bytes memory returnData) = IAvatar(avatar).execTransactionFromModuleReturnData(target, value, callData, Enum.Operation.Call);
         require(success, "DAOExecutor::executeTransaction: Transaction execution reverted.");
 
         emit ExecuteTransaction(txHash, target, value, signature, data, eta);
@@ -204,8 +223,4 @@ contract DAOExecutor is Initializable {
         // solium-disable-next-line security/no-block-members
         return block.timestamp;
     }
-
-    receive() external payable {}
-
-    fallback() external payable {}
 }
