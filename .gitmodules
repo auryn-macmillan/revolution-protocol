@@ -1,0 +1,3 @@
+[submodule "packages/revolution/script/zodiac"]
+	path = packages/revolution/script/zodiac
+	url = https://github.com/gnosis/zodiac
