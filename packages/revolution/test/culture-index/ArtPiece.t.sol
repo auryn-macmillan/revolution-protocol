@@ -176,26 +176,6 @@ contract CultureIndexArtPieceTest is CultureIndexTestSuite {
     }
 
     /**
-     * @dev Test case to validate art piece creation with an invalid media type
-     */
-    function testInvalidMediaType() public {
-        ICultureIndex.ArtPieceMetadata memory metadata = ICultureIndex.ArtPieceMetadata({
-            name: "Invalid Media Type",
-            description: "Invalid Piece",
-            mediaType: ICultureIndex.MediaType.NONE,
-            image: "",
-            text: "",
-            animationUrl: ""
-        });
-
-        ICultureIndex.CreatorBps[] memory creators = new ICultureIndex.CreatorBps[](1);
-        creators[0] = ICultureIndex.CreatorBps({ creator: address(0x1), bps: 10000 });
-
-        vm.expectRevert(abi.encodeWithSignature("INVALID_MEDIA_TYPE()"));
-        cultureIndex.createPiece(metadata, creators);
-    }
-
-    /**
      * @dev Test case to validate art piece creation with missing media data
      */
     function testMissingMediaDataImage() public {
@@ -344,6 +324,8 @@ contract CultureIndexArtPieceTest is CultureIndexTestSuite {
         vm.startPrank(address(revolutionPointsEmitter));
         revolutionPoints.mint(address(this), pointsSupply);
 
+        vm.roll(vm.getBlockNumber() + 1);
+
         // Create an art piece
         uint256 pieceId = createDefaultArtPiece();
         CultureIndex.ArtPiece memory piece = cultureIndex.getPieceById(pieceId);
@@ -351,49 +333,40 @@ contract CultureIndexArtPieceTest is CultureIndexTestSuite {
         // Check initial values
         uint256 expectedTotalVotesSupply = pointsSupply;
         uint256 expectedQuorumVotes = (quorumVotesBPS * expectedTotalVotesSupply) / 10_000;
-        assertEq(piece.quorumVotes, expectedQuorumVotes, "Quorum votes should be set correctly on creation");
-        assertEq(
-            piece.totalVotesSupply,
-            expectedTotalVotesSupply,
-            "Total votes supply should be set correctly on creation"
-        );
-        assertEq(piece.totalPointsSupply, pointsSupply, "Total Points supply should be set correctly on creation");
+        vm.roll(vm.getBlockNumber() + 1);
 
-        vm.roll(block.number + 1);
+        assertEq(
+            cultureIndex.quorumVotesForPiece(piece.pieceId),
+            expectedQuorumVotes,
+            "Quorum votes should be set correctly on creation"
+        );
+
+        vm.roll(vm.getBlockNumber() + 1);
         // Cast votes
         vm.startPrank(address(this));
         voteForPiece(pieceId);
 
         // Mint token and govTokens, create a new piece and check fields
         vm.startPrank(address(auction));
+        vm.roll(vm.getBlockNumber() + 1);
+
         revolutionToken.mint();
 
         vm.startPrank(address(revolutionPointsEmitter));
         revolutionPoints.mint(address(this), pointsSupply);
 
-        vm.roll(block.number + 1);
+        vm.roll(vm.getBlockNumber() + 1);
 
         CultureIndex.ArtPiece memory newPiece = cultureIndex.getPieceById(createDefaultArtPiece());
-        emit log_named_uint("newPiece.quorumVotes", newPiece.quorumVotes);
-        emit log_named_uint("pointsSupply", pointsSupply);
-        emit log_named_uint(
-            "1e18 * cultureIndex.revolutionTokenVoteWeight()",
-            1e18 * cultureIndex.revolutionTokenVoteWeight()
-        );
+        vm.roll(vm.getBlockNumber() + 1);
 
         uint256 expectedTotalVotesSupply2 = pointsSupply * 2 + cultureIndex.revolutionTokenVoteWeight();
-        emit log_named_uint("expectedTotalVotesSupply2", expectedTotalVotesSupply2);
+
         uint256 expectedQuorumVotes2 = (quorumVotesBPS * (expectedTotalVotesSupply2)) / 10_000;
-        assertEq(newPiece.quorumVotes, expectedQuorumVotes2, "Quorum votes should be set correctly on second creation");
         assertEq(
-            newPiece.totalVotesSupply,
-            expectedTotalVotesSupply2,
-            "Total votes supply should be set correctly on second creation"
-        );
-        assertEq(
-            newPiece.totalPointsSupply,
-            pointsSupply * 2,
-            "Total Points supply should be set correctly on second creation"
+            cultureIndex.quorumVotesForPiece(newPiece.pieceId),
+            expectedQuorumVotes2,
+            "Quorum votes should be set correctly on second creation"
         );
     }
 }

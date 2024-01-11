@@ -100,19 +100,53 @@ contract Descriptor is IDescriptor, VersionedContract, UUPS, Ownable2StepUpgrade
     }
 
     /**
+     * @notice Altered from Uniswap V3 - used to remove special characters before calling `constructTokenURI`
+     */
+    function escape(string memory str) internal pure returns (string memory) {
+        bytes memory strBytes = bytes(str);
+        uint8 quotesCount = 0;
+        uint256 len = strBytes.length;
+        for (uint256 i = 0; i < len; i++) {
+            if (strBytes[i] == '"') {
+                quotesCount++;
+            } else if (strBytes[i] == "\\") {
+                quotesCount++;
+            } else if (strBytes[i] == "'") {
+                quotesCount++;
+            }
+        }
+        if (quotesCount > 0) {
+            bytes memory escapedBytes = new bytes(len + (quotesCount));
+            uint256 index;
+            for (uint8 i = 0; i < len; i++) {
+                if (strBytes[i] == '"') {
+                    escapedBytes[index++] = "\\";
+                } else if (strBytes[i] == "\\") {
+                    escapedBytes[index++] = "\\";
+                } else if (strBytes[i] == "'") {
+                    escapedBytes[index++] = "\\";
+                }
+                escapedBytes[index++] = strBytes[i];
+            }
+            return string(escapedBytes);
+        }
+        return str;
+    }
+
+    /**
      * @notice Construct an ERC721 token URI.
      */
     function constructTokenURI(TokenURIParams memory params) public pure returns (string memory) {
         string memory json = string(
             abi.encodePacked(
                 '{"name":"',
-                params.name,
+                escape(params.name),
                 '", "description":"',
-                params.description,
+                escape(params.description),
                 '", "image": "',
-                params.image,
+                escape(params.image),
                 '", "animation_url": "',
-                params.animation_url,
+                escape(params.animation_url),
                 '"}'
             )
         );

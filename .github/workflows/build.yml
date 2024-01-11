@@ -11,7 +11,7 @@ jobs:
       fail-fast: true
 
     name: Build
-    runs-on: revolution_protocol_builds_ubuntu
+    runs-on: revolution_protocol_builds_ubuntu_large
     steps:
       - uses: actions/checkout@v3
 
@@ -25,4 +25,4 @@ jobs:
 
       - name: Build contracts
         run: |
-          cd ${{ inputs.package_folder}} && forge build
+          cd ${{ inputs.package_folder}} && forge build --skip test

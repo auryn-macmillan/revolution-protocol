@@ -22,10 +22,13 @@ contract AuctionHouseBasicTest is AuctionHouseTest {
         auction.setEntropyRateBps(newEntropyRateBps);
     }
 
-    function testBidEventEmission() public {
+    function test_BidEventEmission() public {
         //setup bid
         uint256 bidAmount = 100 ether;
         uint256 verbId = createDefaultArtPiece();
+
+        // roll
+        vm.roll(vm.getBlockNumber() + 1);
 
         auction.unpause();
         vm.deal(address(1), bidAmount + 2 ether);
@@ -192,10 +195,13 @@ contract AuctionHouseBasicTest is AuctionHouseTest {
         assertEq(auction.duration(), 24 hours, "Auction duration should be set correctly");
     }
 
-    function testBidForAnotherAccount() public {
+    function test_BidForAnotherAccount() public {
         //setup bid
         uint256 bidAmount = 100 ether;
         uint256 verbId = createDefaultArtPiece();
+
+        // roll
+        vm.roll(vm.getBlockNumber() + 1);
 
         auction.unpause();
         vm.deal(address(1), bidAmount + 2 ether);
@@ -244,8 +250,10 @@ contract AuctionHouseBasicTest is AuctionHouseTest {
         assertEq(revolutionToken.ownerOf(verbId), address(21), "Verb should be transferred to bidder param");
     }
 
-    function testAuctionCreation() public {
+    function test_AuctionCreation() public {
         createDefaultArtPiece();
+
+        vm.roll(vm.getBlockNumber() + 1); // roll block number to enable voting snapshot
 
         auction.unpause();
         uint256 startTime = block.timestamp;
@@ -266,11 +274,13 @@ contract AuctionHouseBasicTest is AuctionHouseTest {
         assertEq(settled, false, "Auction should not be settled");
     }
 
-    function testBiddingProcess(uint256 bidAmount) public {
+    function test_BiddingProcess(uint256 bidAmount) public {
         vm.assume(bidAmount > auction.reservePrice());
         vm.assume(bidAmount < 10_000_000 ether);
 
         createDefaultArtPiece();
+
+        vm.roll(vm.getBlockNumber() + 1); // roll block number to enable voting snapshot
 
         auction.unpause();
         vm.deal(address(1), bidAmount + 2 ether);
@@ -319,62 +329,65 @@ contract AuctionHouseBasicTest is AuctionHouseTest {
         }
     }
 
-    // function testSettlingAuctions() public {
-    //     createDefaultArtPiece();
-    //     auction.unpause();
+    function testSettlingAuctions() public {
+        createDefaultArtPiece();
 
-    //     (uint256 verbId, , , uint256 endTime, , ) = auction.auction();
-    //     assertEq(
-    //         revolutionToken.ownerOf(verbId),
-    //         address(auction),
-    //         "Verb should be transferred to the auction house"
-    //     );
+        vm.roll(vm.getBlockNumber() + 1);
 
-    //     vm.warp(endTime + 1);
-    //     uint256 pieceId = createDefaultArtPiece();
+        auction.unpause();
 
-    //     //vote for pieceId
-    //     vm.startPrank(address(auction));
-    //     vm.roll(block.number + 1);
-    //     cultureIndex.vote(pieceId);
+        (uint256 verbId, , , uint256 endTime, , ) = auction.auction();
+        assertEq(revolutionToken.ownerOf(verbId), address(auction), "Verb should be transferred to the auction house");
 
-    //     auction.settleCurrentAndCreateNewAuction(); // This will settle the current auction and create a new one
+        vm.warp(endTime + 1);
+        vm.roll(vm.getBlockNumber() + 1);
 
-    //     (, , , , , bool settled) = auction.auction();
+        uint256 pieceId = createDefaultArtPiece();
+        vm.roll(vm.getBlockNumber() + 1);
 
-    //     assertEq(settled, false, "Auction should not be settled because new one created");
-    // }
+        //vote for pieceId
+        vm.startPrank(address(auction));
+        cultureIndex.vote(pieceId);
 
-    // function testAdministrativeFunctions(
-    //     uint256 newTimeBuffer,
-    //     uint256 newReservePrice,
-    //     uint8 newMinBidIncrementPercentage
-    // ) public {
-    //     auction.setTimeBuffer(newTimeBuffer);
-    //     assertEq(auction.timeBuffer(), newTimeBuffer, "Time buffer should be updated correctly");
+        auction.settleCurrentAndCreateNewAuction(); // This will settle the current auction and create a new one
 
-    //     auction.setReservePrice(newReservePrice);
-    //     assertEq(auction.reservePrice(), newReservePrice, "Reserve price should be updated correctly");
+        (, , , , , bool settled) = auction.auction();
 
-    //     auction.setMinBidIncrementPercentage(newMinBidIncrementPercentage);
-    //     assertEq(
-    //         auction.minBidIncrementPercentage(),
-    //         newMinBidIncrementPercentage,
-    //         "Min bid increment percentage should be updated correctly"
-    //     );
-    // }
+        assertEq(settled, false, "Auction should not be settled because new one created");
+    }
 
-    // function testAccessControl() public {
-    //     vm.startPrank(address(1));
-    //     vm.expectRevert();
-    //     auction.pause();
-    //     vm.stopPrank();
+    function testAdministrativeFunctions(
+        uint256 newTimeBuffer,
+        uint256 newReservePrice,
+        uint8 newMinBidIncrementPercentage
+    ) public {
+        auction.setTimeBuffer(newTimeBuffer);
+        assertEq(auction.timeBuffer(), newTimeBuffer, "Time buffer should be updated correctly");
 
-    //     vm.startPrank(address(1));
-    //     vm.expectRevert();
-    //     auction.unpause();
-    //     vm.stopPrank();
-    // }
+        auction.setReservePrice(newReservePrice);
+        assertEq(auction.reservePrice(), newReservePrice, "Reserve price should be updated correctly");
+
+        auction.setMinBidIncrementPercentage(newMinBidIncrementPercentage);
+        assertEq(
+            auction.minBidIncrementPercentage(),
+            newMinBidIncrementPercentage,
+            "Min bid increment percentage should be updated correctly"
+        );
+    }
+
+    function testAccessControl() public {
+        vm.stopPrank();
+
+        vm.startPrank(address(1));
+        vm.expectRevert();
+        auction.pause();
+        vm.stopPrank();
+
+        vm.startPrank(address(1));
+        vm.expectRevert();
+        auction.unpause();
+        vm.stopPrank();
+    }
 }
 
 contract ContractWithoutReceiveOrFallback {

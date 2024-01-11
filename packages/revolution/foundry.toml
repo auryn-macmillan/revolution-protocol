@@ -14,8 +14,10 @@ src = 'src'
 fuzz_runs = 500
 test = 'test'
 
+[profile.ci]
+via_ir = false
+
 [profile.dev]
-libs = ['node_modules', 'script']
 optimizer = false
 optimizer_runs = 0
 via_ir = false

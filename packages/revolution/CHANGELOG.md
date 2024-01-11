@@ -1,5 +1,24 @@
 # @collectivexyz/revolution
 
+## 0.3.1
+
+### Patch Changes
+
+- cafed37: make RevolutionPoints owned by the DAO Executor contract, and add a minter to it for the PointsEmitter
+
+## 0.3.0
+
+### Minor Changes
+
+- 0398ceb: first round of audit fixes, adds DAO proxy contract and uses new VRGDA logic
+
+### Patch Changes
+
+- c32834b: fix high severity bug with VotesUpgradeable delegate functionality
+- cbebcc5: make all contracts owned by DAO Executory, increases gas threshold
+- Updated dependencies [0398ceb]
+  - @cobuild/protocol-rewards@0.10.0
+
 ## 0.2.4
 
 ### Patch Changes

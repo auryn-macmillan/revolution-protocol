@@ -2,6 +2,8 @@
   "solidity.defaultCompiler": "remote",
   "solidity.compileUsingRemoteVersion": "v0.8.22+commit.4fc1097e",
   "prettier.documentSelectors": ["**/*.sol"],
+  "solidity.packageDefaultDependenciesDirectory": "node_modules",
+  "solidity.enabledAsYouTypeCompilationErrorCheck": true,
   "[solidity]": {
     "editor.defaultFormatter": "esbenp.prettier-vscode"
   }

@@ -8,6 +8,7 @@ import { UUPS } from "../libs/proxy/UUPS.sol";
 import { VersionedContract } from "../version/VersionedContract.sol";
 
 import { IRevolutionBuilder } from "../interfaces/IRevolutionBuilder.sol";
+import { IRevolutionVotingPower } from "../interfaces/IRevolutionVotingPower.sol";
 
 import { ERC20VotesUpgradeable } from "../base/erc20/ERC20VotesUpgradeable.sol";
 import { MaxHeap } from "./MaxHeap.sol";
@@ -27,6 +28,8 @@ contract CultureIndex is
     EIP712Upgradeable,
     CultureIndexStorageV1
 {
+    using Strings for uint256;
+
     ///                                                          ///
     ///                         IMMUTABLES                       ///
     ///                                                          ///
@@ -36,6 +39,13 @@ contract CultureIndex is
 
     // Constant for max number of creators
     uint256 public constant MAX_NUM_CREATORS = 100;
+
+    // Constant for art piece metadata
+    uint256 public constant MAX_NAME_LENGTH = 100;
+    uint256 public constant MAX_DESCRIPTION_LENGTH = 2100;
+    uint256 public constant MAX_IMAGE_LENGTH = 21_000;
+    uint256 public constant MAX_ANIMATION_URL_LENGTH = 100;
+    uint256 public constant MAX_TEXT_LENGTH = 67_112;
 
     // The weight of the 721 voting token
     uint256 public revolutionTokenVoteWeight;
@@ -63,27 +73,24 @@ contract CultureIndex is
 
     /**
      * @notice Initializes a token's metadata descriptor
-     * @param _revolutionPoints The address of the RevolutionPoints
-     * @param _revolutionToken The address of the ERC721 voting token, commonly the dropped art pieces
+     * @param _votingPower The address of the RevolutionVotingPower contract
      * @param _initialOwner The owner of the contract, allowed to drop pieces. Commonly updated to the AuctionHouse
      * @param _maxHeap The address of the max heap contract
      * @param _dropperAdmin The address that can drop new art pieces
      * @param _cultureIndexParams The CultureIndex settings
      */
     function initialize(
-        address _revolutionPoints,
-        address _revolutionToken,
+        address _votingPower,
         address _initialOwner,
         address _maxHeap,
         address _dropperAdmin,
-        IRevolutionBuilder.CultureIndexParams memory _cultureIndexParams
+        IRevolutionBuilder.CultureIndexParams calldata _cultureIndexParams
     ) external initializer {
         if (msg.sender != address(manager)) revert NOT_MANAGER();
 
         if (_cultureIndexParams.quorumVotesBPS > MAX_QUORUM_VOTES_BPS) revert INVALID_QUORUM_BPS();
         if (_cultureIndexParams.revolutionTokenVoteWeight <= 0) revert INVALID_ERC721_VOTING_WEIGHT();
-        if (_revolutionPoints == address(0)) revert ADDRESS_ZERO();
-        if (_revolutionToken == address(0)) revert ADDRESS_ZERO();
+        if (_votingPower == address(0)) revert ADDRESS_ZERO();
         if (_initialOwner == address(0)) revert ADDRESS_ZERO();
 
         // Setup ownable
@@ -94,8 +101,7 @@ contract CultureIndex is
 
         __ReentrancyGuard_init();
 
-        revolutionPoints = ERC20VotesUpgradeable(_revolutionPoints);
-        revolutionToken = ERC721CheckpointableUpgradeable(_revolutionToken);
+        votingPower = IRevolutionVotingPower(_votingPower);
         revolutionTokenVoteWeight = _cultureIndexParams.revolutionTokenVoteWeight;
         name = _cultureIndexParams.name;
         description = _cultureIndexParams.description;
@@ -110,8 +116,31 @@ contract CultureIndex is
     }
 
     ///                                                          ///
-    ///                         MODIFIERS                        ///
+    ///                         FUNCTIONS                        ///
     ///                                                          ///
+
+    /**
+     *  Returns the substring of a string.
+     * @param str The string to substring.
+     * @param startIndex The starting index of the substring.
+     * @param endIndex The ending index of the substring.
+     *
+     * Requirements:
+     * - The `startIndex` must be less than the `endIndex`.
+     * - The `endIndex` must be less than the length of the string.
+     */
+    function _substring(string memory str, uint256 startIndex, uint256 endIndex) internal pure returns (string memory) {
+        //verify lengths are valid
+        if (startIndex >= endIndex) revert INVALID_SUBSTRING();
+        if (endIndex > bytes(str).length) revert INVALID_SUBSTRING();
+
+        bytes memory strBytes = bytes(str);
+        bytes memory result = new bytes(endIndex - startIndex);
+        for (uint256 i = startIndex; i < endIndex; i++) {
+            result[i - startIndex] = strBytes[i];
+        }
+        return string(result);
+    }
 
     /**
      *  Validates the media type and associated data.
@@ -122,18 +151,47 @@ contract CultureIndex is
      * - The corresponding media data must not be empty.
      */
     function validateMediaType(ArtPieceMetadata calldata metadata) internal pure {
-        if (uint8(metadata.mediaType) == 0 || uint8(metadata.mediaType) > 5) revert INVALID_MEDIA_TYPE();
+        if (uint8(metadata.mediaType) > 3) revert INVALID_MEDIA_TYPE();
 
         if (metadata.mediaType == MediaType.IMAGE) {
             if (bytes(metadata.image).length == 0) revert INVALID_MEDIA_METADATA();
-        } else if (metadata.mediaType == MediaType.ANIMATION) {
+        } else if (metadata.mediaType == MediaType.ANIMATION || metadata.mediaType == MediaType.AUDIO) {
             if (bytes(metadata.animationUrl).length == 0) revert INVALID_MEDIA_METADATA();
         } else if (metadata.mediaType == MediaType.TEXT) {
             if (bytes(metadata.text).length == 0) revert INVALID_MEDIA_METADATA();
         }
 
+        // ensure all fields of metadata are within reasonable bounds
+        if (bytes(metadata.description).length > MAX_DESCRIPTION_LENGTH) revert INVALID_MEDIA_METADATA();
+
+        // permit reasonable SVG images
+        if (bytes(metadata.image).length > MAX_IMAGE_LENGTH) revert INVALID_MEDIA_METADATA();
+
+        // assume animation is always an ipfs hash
+        if (bytes(metadata.animationUrl).length > MAX_ANIMATION_URL_LENGTH) revert INVALID_MEDIA_METADATA();
+
+        // permit reasonable text
+        if (bytes(metadata.text).length > MAX_TEXT_LENGTH) revert INVALID_MEDIA_METADATA();
+
+        string memory ipfsPrefix = "ipfs://";
+        string memory svgPrefix = "data:image/svg+xml;base64,";
+
+        // ensure animation url starts with ipfs://
+        if (
+            bytes(metadata.animationUrl).length > 0 &&
+            !Strings.equal(_substring(metadata.animationUrl, 0, 7), (ipfsPrefix))
+        ) revert INVALID_MEDIA_METADATA();
+
+        // ensure image url starts with ipfs:// or data:image/svg+xml;base64,
+        if (
+            bytes(metadata.image).length > 0 &&
+            !(Strings.equal(_substring(metadata.image, 0, 7), (ipfsPrefix)) ||
+                Strings.equal(_substring(metadata.image, 0, 26), (svgPrefix)))
+        ) revert INVALID_MEDIA_METADATA();
+
         //ensure name is set
-        if (bytes(metadata.name).length == 0) revert INVALID_MEDIA_METADATA();
+        if (bytes(metadata.name).length == 0 || bytes(metadata.name).length > MAX_NAME_LENGTH)
+            revert INVALID_MEDIA_METADATA();
     }
 
     /**
@@ -188,23 +246,21 @@ contract CultureIndex is
         /// @dev Insert the new piece into the max heap with 0 vote weight
         maxHeap.insert(pieceId, 0);
 
+        // Save art piece to storage mapping
         ArtPiece storage newPiece = pieces[pieceId];
 
         newPiece.pieceId = pieceId;
-        newPiece.totalVotesSupply = _calculateVoteWeight(revolutionPoints.totalSupply(), revolutionToken.totalSupply());
-        newPiece.totalPointsSupply = revolutionPoints.totalSupply();
         newPiece.metadata = metadata;
         newPiece.sponsor = msg.sender;
         newPiece.creationBlock = block.number;
-        newPiece.quorumVotes = (quorumVotesBPS * newPiece.totalVotesSupply) / 10_000;
 
         for (uint i; i < creatorArrayLength; i++) {
             newPiece.creators.push(creatorArray[i]);
         }
 
-        emit PieceCreated(pieceId, msg.sender, metadata, newPiece.quorumVotes, newPiece.totalVotesSupply, creatorArray);
+        emit PieceCreated(pieceId, msg.sender, metadata, creatorArray);
 
-        return newPiece.pieceId;
+        return pieceId;
     }
 
     /**
@@ -214,47 +270,8 @@ contract CultureIndex is
      * @return A boolean indicating if the voter has voted for the art piece.
      */
     function hasVoted(uint256 pieceId, address voter) external view returns (bool) {
+        if (pieceId >= _currentPieceId) revert INVALID_PIECE_ID();
         return votes[pieceId][voter].voterAddress != address(0);
-    }
-
-    /**
-     * @notice Returns the voting power of a voter at the current block.
-     * @param account The address of the voter.
-     * @return The voting power of the voter.
-     */
-    function getVotes(address account) external view override returns (uint256) {
-        return _getVotes(account);
-    }
-
-    /**
-     * @notice Returns the voting power of a voter at the current block.
-     * @param account The address of the voter.
-     * @return The voting power of the voter.
-     */
-    function getPastVotes(address account, uint256 blockNumber) external view override returns (uint256) {
-        return _getPastVotes(account, blockNumber);
-    }
-
-    /**
-     * @notice Calculates the vote weight of a voter.
-     * @param pointsBalance The RevolutionPoints balance of the voter.
-     * @param erc721Balance The ERC721 balance of the voter.
-     * @return The vote weight of the voter.
-     */
-    function _calculateVoteWeight(uint256 pointsBalance, uint256 erc721Balance) internal view returns (uint256) {
-        return pointsBalance + (erc721Balance * revolutionTokenVoteWeight);
-    }
-
-    function _getVotes(address account) internal view returns (uint256) {
-        return _calculateVoteWeight(revolutionPoints.getVotes(account), revolutionToken.getVotes(account));
-    }
-
-    function _getPastVotes(address account, uint256 blockNumber) internal view returns (uint256) {
-        return
-            _calculateVoteWeight(
-                revolutionPoints.getPastVotes(account, blockNumber),
-                revolutionToken.getPastVotes(account, blockNumber)
-            );
     }
 
     /**
@@ -270,7 +287,14 @@ contract CultureIndex is
         if (pieces[pieceId].isDropped) revert ALREADY_DROPPED();
         if (votes[pieceId][voter].voterAddress != address(0)) revert ALREADY_VOTED();
 
-        uint256 weight = _getPastVotes(voter, pieces[pieceId].creationBlock);
+        // Use the previous block number to calculate the vote weight to prevent flash attacks
+        uint256 erc20PointsVoteWeight = 1;
+        uint256 weight = votingPower.getPastVotesWithWeights(
+            voter,
+            pieces[pieceId].creationBlock - 1,
+            erc20PointsVoteWeight,
+            revolutionTokenVoteWeight
+        );
         if (weight <= minVoteWeight) revert WEIGHT_TOO_LOW();
 
         votes[pieceId][voter] = Vote(voter, weight);
@@ -347,11 +371,11 @@ contract CultureIndex is
     /// @param r R component of signatures
     /// @param s S component of signatures
     function batchVoteForManyWithSig(
-        address[] memory from,
+        address[] calldata from,
         uint256[][] calldata pieceIds,
-        uint256[] memory deadline,
-        uint8[] memory v,
-        bytes32[] memory r,
+        uint256[] calldata deadline,
+        uint8[] calldata v,
+        bytes32[] calldata r,
         bytes32[] memory s
     ) external nonReentrant {
         uint256 len = from.length;
@@ -386,13 +410,17 @@ contract CultureIndex is
 
         bytes32 voteHash;
 
-        voteHash = keccak256(abi.encode(VOTE_TYPEHASH, from, pieceIds, nonces[from]++, deadline));
+        // Derive and return the vote hash as specified by EIP-712.
+
+        voteHash = keccak256(
+            abi.encode(VOTE_TYPEHASH, from, keccak256(abi.encodePacked(pieceIds)), nonces[from]++, deadline)
+        );
 
         bytes32 digest = _hashTypedDataV4(voteHash);
 
         address recoveredAddress = ecrecover(digest, v, r, s);
 
-        // Ensure to address is not 0
+        // Ensure from address is not 0
         if (from == address(0)) revert ADDRESS_ZERO();
 
         // Ensure signature is valid
@@ -465,30 +493,55 @@ contract CultureIndex is
      * Differs from `GovernerBravo` which uses fixed amount
      */
     function quorumVotes() public view returns (uint256) {
+        return (quorumVotesBPS * votingPower.getTotalVotesSupplyWithWeights(1, revolutionTokenVoteWeight)) / 10_000;
+    }
+
+    /**
+     * @notice Current quorum votes for a specific piece using ERC721 Total Supply, ERC721 Vote Weight, and RevolutionPoints Total Supply
+     * @param pieceId The ID of the art piece.
+     */
+    function quorumVotesForPiece(uint256 pieceId) public view returns (uint256) {
         return
-            (quorumVotesBPS * _calculateVoteWeight(revolutionPoints.totalSupply(), revolutionToken.totalSupply())) /
-            10_000;
+            (quorumVotesBPS *
+                votingPower.getPastTotalVotesSupplyWithWeights(
+                    pieces[pieceId].creationBlock,
+                    1,
+                    revolutionTokenVoteWeight
+                )) / 10_000;
     }
 
     /**
      * @notice Pulls and drops the top-voted piece.
      * @return The top voted piece
      */
-    function dropTopVotedPiece() public nonReentrant returns (ArtPiece memory) {
+    function dropTopVotedPiece() public nonReentrant returns (ArtPieceCondensed memory) {
         if (msg.sender != dropperAdmin) revert NOT_DROPPER_ADMIN();
 
-        ICultureIndex.ArtPiece memory piece = getTopVotedPiece();
-        if (totalVoteWeights[piece.pieceId] < piece.quorumVotes) revert DOES_NOT_MEET_QUORUM();
+        uint256 pieceId = topVotedPieceId();
+
+        uint256 creationBlock = pieces[pieceId].creationBlock;
+
+        uint256 pastQuorumVotes = (quorumVotesBPS *
+            (votingPower.getPastTotalVotesSupplyWithWeights(creationBlock, 1, revolutionTokenVoteWeight) -
+                //subtract the votes of the AuctionHouse when calculating quorum since the tokens are not accessible
+                votingPower._getTokenMinter__PastTokenVotes__WithWeight(creationBlock, revolutionTokenVoteWeight))) /
+            10_000;
+        if (totalVoteWeights[pieceId] < pastQuorumVotes) revert DOES_NOT_MEET_QUORUM();
 
         //set the piece as dropped
-        pieces[piece.pieceId].isDropped = true;
+        pieces[pieceId].isDropped = true;
 
         //slither-disable-next-line unused-return
         maxHeap.extractMax();
 
-        emit PieceDropped(piece.pieceId, msg.sender);
+        emit PieceDropped(pieceId, msg.sender);
 
-        return pieces[piece.pieceId];
+        return
+            ICultureIndex.ArtPieceCondensed({
+                pieceId: pieceId,
+                creators: pieces[pieceId].creators,
+                sponsor: pieces[pieceId].sponsor
+            });
     }
 
     ///                                                          ///

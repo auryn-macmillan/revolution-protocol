@@ -20,16 +20,12 @@ interface ICultureIndexEvents {
      * @param pieceId Unique identifier for the newly created piece.
      * @param sponsor Address that created the piece.
      * @param metadata Metadata associated with the art piece.
-     * @param quorumVotes The quorum votes for the piece.
-     * @param totalVotesSupply The total votes supply for the piece.
      * @param creators Creators of the art piece.
      */
     event PieceCreated(
         uint256 indexed pieceId,
         address indexed sponsor,
         ICultureIndex.ArtPieceMetadata metadata,
-        uint256 quorumVotes,
-        uint256 totalVotesSupply,
         ICultureIndex.CreatorBps[] creators
     );
 
@@ -110,6 +106,9 @@ interface ICultureIndex is ICultureIndexEvents {
     /// @dev Reverts if art piece metadata is invalid
     error INVALID_MEDIA_METADATA();
 
+    /// @dev Reverts if substring is invalid
+    error INVALID_SUBSTRING();
+
     /// @dev Reverts if bps does not sum to 10000
     error INVALID_BPS_SUM();
 
@@ -122,12 +121,10 @@ interface ICultureIndex is ICultureIndexEvents {
 
     // Enum representing different media types for art pieces.
     enum MediaType {
-        NONE,
         IMAGE,
         ANIMATION,
         AUDIO,
-        TEXT,
-        OTHER
+        TEXT
     }
 
     // Struct defining metadata for an art piece.
@@ -154,9 +151,6 @@ interface ICultureIndex is ICultureIndexEvents {
      * @param sponsor Address that created the piece.
      * @param isDropped Boolean indicating if the piece has been dropped.
      * @param creationBlock Block number when the piece was created.
-     * @param quorumVotes The quorum votes for the piece.
-     * @param totalPointsSupply The total RevolutionPoints supply for the piece.
-     * @param totalVotesSupply The total votes supply for the piece.
      */
     struct ArtPiece {
         uint256 pieceId;
@@ -165,9 +159,18 @@ interface ICultureIndex is ICultureIndexEvents {
         address sponsor;
         bool isDropped;
         uint256 creationBlock;
-        uint256 quorumVotes;
-        uint256 totalPointsSupply;
-        uint256 totalVotesSupply;
+    }
+
+    /**
+     * @dev Struct defining an art piece for use in a token
+     *@param pieceId Unique identifier for the piece.
+     * @param creators Creators of the art piece.
+     * @param sponsor Address that created the piece.
+     */
+    struct ArtPieceCondensed {
+        uint256 pieceId;
+        CreatorBps[] creators;
+        address sponsor;
     }
 
     // Constant for max number of creators
@@ -281,24 +284,18 @@ interface ICultureIndex is ICultureIndexEvents {
      * @dev This function also updates internal state to reflect the piece's dropped status.
      * @return The ArtPiece struct of the top voted piece that was just dropped.
      */
-    function dropTopVotedPiece() external returns (ArtPiece memory);
-
-    function getVotes(address account) external view returns (uint256);
-
-    function getPastVotes(address account, uint256 blockNumber) external view returns (uint256);
+    function dropTopVotedPiece() external returns (ArtPieceCondensed memory);
 
     /**
      * @notice Initializes a token's metadata descriptor
-     * @param revolutionPoints The address of the revolution points
-     * @param revolutionToken The address of the ERC721 voting token, commonly the dropped art pieces
+     * @param votingPower The address of the revolution voting power contract
      * @param initialOwner The owner of the contract, allowed to drop pieces. Commonly updated to the AuctionHouse
      * @param maxHeap The address of the max heap contract
      * @param dropperAdmin The address that can drop new art pieces
      * @param cultureIndexParams The CultureIndex settings
      */
     function initialize(
-        address revolutionPoints,
-        address revolutionToken,
+        address votingPower,
         address initialOwner,
         address maxHeap,
         address dropperAdmin,

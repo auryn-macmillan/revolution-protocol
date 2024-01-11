@@ -55,7 +55,7 @@ interface IRevolutionToken is IERC721 {
     ///                           EVENTS                         ///
     ///                                                          ///
 
-    event VerbCreated(uint256 indexed tokenId, ICultureIndex.ArtPiece artPiece);
+    event VerbCreated(uint256 indexed tokenId, ICultureIndex.ArtPieceCondensed artPiece);
 
     event VerbBurned(uint256 indexed tokenId);
 

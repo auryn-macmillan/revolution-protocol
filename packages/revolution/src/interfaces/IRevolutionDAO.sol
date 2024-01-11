@@ -9,14 +9,12 @@ interface IRevolutionDAO {
     /**
      * @notice Used to initialize the contract during delegator contructor
      * @param executor The address of the DAOExecutor
-     * @param revolutionToken The address of the ERC-721 token
-     * @param revolutionPoints The address of the ERC-20 token
+     * @param votingPower The address of the RevolutionVotingPower contract
      * @param govParams The initial governance parameters
      */
     function initialize(
         address executor,
-        address revolutionToken,
-        address revolutionPoints,
+        address votingPower,
         IRevolutionBuilder.GovParams calldata govParams
     ) external;
 }

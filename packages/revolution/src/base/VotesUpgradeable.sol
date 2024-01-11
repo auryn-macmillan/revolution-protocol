@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 // OpenZeppelin Contracts (last updated v5.0.0) (governance/utils/Votes.sol)
-pragma solidity ^0.8.20;
+pragma solidity ^0.8.22;
 
 import { IERC5805 } from "@openzeppelin/contracts/interfaces/IERC5805.sol";
 import { ContextUpgradeable } from "@openzeppelin/contracts-upgradeable/utils/ContextUpgradeable.sol";
@@ -208,6 +208,13 @@ abstract contract VotesUpgradeable is
         $._delegatee[account] = delegatee;
 
         emit DelegateChanged(account, oldDelegate, delegatee);
+
+        // Do not allow users to delegate to the zero address
+        // To prevent delegatee from draining all voting units from delegator
+        // As a result of the change in default behavior of "delegates" function
+        // Audit info: https://github.com/code-423n4/2023-12-revolutionprotocol-findings/issues/49
+        require(delegatee != address(0), "Votes: cannot delegate to zero address");
+
         _moveDelegateVotes(oldDelegate, delegatee, _getVotingUnits(account));
     }
 

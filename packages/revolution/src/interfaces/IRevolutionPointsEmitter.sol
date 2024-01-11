@@ -2,8 +2,9 @@
 pragma solidity ^0.8.22;
 
 import { IRevolutionBuilder } from "./IRevolutionBuilder.sol";
+import { IRewardSplits } from "@cobuild/protocol-rewards/src/abstract/RewardSplits.sol";
 
-interface IRevolutionPointsEmitter {
+interface IRevolutionPointsEmitter is IRewardSplits {
     ///                                                          ///
     ///                           ERRORS                         ///
     ///                                                          ///

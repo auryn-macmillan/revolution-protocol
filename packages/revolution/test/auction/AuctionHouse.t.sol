@@ -44,7 +44,7 @@ contract AuctionHouseTest is RevolutionBuilderTest {
 
         super.deployMock();
 
-        vm.startPrank(address(dao));
+        vm.startPrank(address(executor));
     }
 
     // Utility function to create a new art piece and return its ID

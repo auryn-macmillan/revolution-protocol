@@ -8,7 +8,7 @@ contract AuctionHouseMintTest is AuctionHouseTest {
     function testMintFailureDueToEmptyNFTList() public {
         // Pre-conditions setup to ensure the CultureIndex is empty
         vm.expectEmit(true, true, true, true);
-        emit PausableUpgradeable.Paused(address(dao));
+        emit PausableUpgradeable.Paused(address(executor));
         auction.unpause();
 
         // Expect that the auction is paused due to error
@@ -18,7 +18,7 @@ contract AuctionHouseMintTest is AuctionHouseTest {
     function testBehaviorOnMintFailureDuringAuctionCreation() public {
         //check auction paused emitted
         vm.expectEmit(true, true, true, true);
-        emit PausableUpgradeable.Paused(address(dao));
+        emit PausableUpgradeable.Paused(address(executor));
 
         auction.unpause();
 

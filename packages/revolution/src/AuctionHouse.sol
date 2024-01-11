@@ -62,10 +62,10 @@ contract AuctionHouse is
     // The minimum percentage difference between the last bid amount and the current bid
     uint8 public minBidIncrementPercentage;
 
-    // The split of the winning bid that is reserved for the creator of the Verb in basis points
+    // The split of the winning bid that is reserved for the creator of the Art Piece in basis points
     uint256 public creatorRateBps;
 
-    // The all time minimum split of the winning bid that is reserved for the creator of the Verb in basis points
+    // The all time minimum split of the winning bid that is reserved for the creator of the Art Piece in basis points
     uint256 public minCreatorRateBps;
 
     // The split of (auction proceeds * creatorRate) that is sent to the creator as ether in basis points
@@ -84,8 +84,8 @@ contract AuctionHouse is
     /// @notice The contract upgrade manager
     IRevolutionBuilder public immutable manager;
 
-    // TODO investigate this - The minimum gas threshold for creating an auction (minting RevolutionToken)
-    uint32 public constant MIN_TOKEN_MINT_GAS_THRESHOLD = 750_000;
+    // The minimum gasleft() threshold for creating an auction (required to mint a RevolutionToken)
+    uint32 public constant MIN_TOKEN_MINT_GAS_THRESHOLD = 500_000;
 
     ///                                                          ///
     ///                         CONSTRUCTOR                      ///
@@ -161,9 +161,9 @@ contract AuctionHouse is
     }
 
     /**
-     * @notice Create a bid for a Verb, with a given amount.
+     * @notice Create a bid for a Token, with a given amount.
      * @dev This contract only accepts payment in ETH.
-     * @param verbId The ID of the Verb to bid on.
+     * @param verbId The ID of the Token to bid on.
      * @param bidder The address of the bidder.
      */
     function createBid(uint256 verbId, address bidder) external payable override nonReentrant {
@@ -204,7 +204,7 @@ contract AuctionHouse is
     }
 
     /**
-     * @notice Set the split of the winning bid that is reserved for the creator of the Verb in basis points.
+     * @notice Set the split of the winning bid that is reserved for the creator of the Art Piece (token) in basis points.
      * @dev Only callable by the owner.
      * @param _creatorRateBps New creator rate in basis points.
      */
@@ -218,7 +218,7 @@ contract AuctionHouse is
     }
 
     /**
-     * @notice Set the minimum split of the winning bid that is reserved for the creator of the Verb in basis points.
+     * @notice Set the minimum split of the winning bid that is reserved for the creator of the Art Piece (token) in basis points.
      * @dev Only callable by the owner.
      * @param _minCreatorRateBps New minimum creator rate in basis points.
      */
@@ -321,7 +321,7 @@ contract AuctionHouse is
 
     /**
      * @notice Settle an auction, finalizing the bid and paying out to the owner. Pays out to the creator and the owner based on the creatorRateBps and entropyRateBps.
-     * @dev If there are no bids, the Verb is burned.
+     * @dev If there are no bids, the Token is burned.
      */
     function _settleAuction() internal {
         IAuctionHouse.Auction memory _auction = auction;
@@ -337,19 +337,19 @@ contract AuctionHouse is
 
         uint256 creatorTokensEmitted = 0;
         // Check if contract balance is greater than reserve price
-        if (address(this).balance < reservePrice) {
+        if (_auction.amount < reservePrice) {
             // If contract balance is less than reserve price, refund to the last bidder
             if (_auction.bidder != address(0)) {
                 _safeTransferETHWithFallback(_auction.bidder, _auction.amount);
             }
 
-            // And then burn the Noun
+            // And then burn the token
             revolutionToken.burn(_auction.verbId);
         } else {
-            //If no one has bid, burn the Verb
+            //If no one has bid, burn the token
             if (_auction.bidder == address(0))
                 revolutionToken.burn(_auction.verbId);
-                //If someone has bid, transfer the Verb to the winning bidder
+                //If someone has bid, transfer the token to the winning bidder
             else revolutionToken.transferFrom(address(this), _auction.bidder, _auction.verbId);
 
             if (_auction.amount > 0) {
@@ -372,11 +372,21 @@ contract AuctionHouse is
                 uint256 ethPaidToCreators = 0;
 
                 //Transfer creator's share to the creator, for each creator, and build arrays for revolutionPointsEmitter.buyToken
-                if (creatorsShare > 0 && entropyRateBps > 0) {
+                if (creatorsShare > 0) {
+                    //Get the creators of the Verb
                     ICultureIndex.CreatorBps[] memory creators = revolutionToken
                         .getArtPieceById(_auction.verbId)
                         .creators;
+
+                    //Calculate the amount to be paid to the creators
                     uint entropyRateAmount = creatorsShare * entropyRateBps;
+
+                    //If the amount to be spent on governance for creators is less than the minimum purchase amount for points
+                    if ((creatorsShare - (entropyRateAmount / 10_000)) <= revolutionPointsEmitter.minPurchaseAmount()) {
+                        //Set the amount to the full creators share, so creators are paid fully in ETH
+                        entropyRateAmount = creatorsShare * 10_000;
+                    }
+
                     for (uint256 i = 0; i < numCreators; i++) {
                         vrgdaReceivers[i] = creators[i].creator;
                         vrgdaSplits[i] = creators[i].bps;

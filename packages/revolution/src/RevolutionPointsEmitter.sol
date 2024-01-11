@@ -34,11 +34,6 @@ contract RevolutionPointsEmitter is
     // solhint-disable-next-line not-rely-on-time
     uint256 public startTime;
 
-    /**
-     * @notice A running total of the amount of tokens emitted.
-     */
-    int256 public emittedTokenWad;
-
     // The split of the purchase that is reserved for the creator of the Verb in basis points
     uint256 public creatorRateBps;
 
@@ -217,36 +212,30 @@ contract RevolutionPointsEmitter is
             ? getTokenQuoteForEther(buyTokenPaymentShares.creatorsGovernancePayment)
             : int(0);
 
-        // Update total tokens emitted for this purchase with tokens for creators
-        if (totalTokensForCreators > 0) emittedTokenWad = emittedTokenWad + totalTokensForCreators;
-
-        // Tokens to emit to buyers
-        int totalTokensForBuyers = buyTokenPaymentShares.buyersShare > 0
-            ? getTokenQuoteForEther(buyTokenPaymentShares.buyersShare)
-            : int(0);
-
-        // Update total tokens emitted for this purchase with tokens for buyers
-        if (totalTokensForBuyers > 0) emittedTokenWad = emittedTokenWad + totalTokensForBuyers;
-
-        //Deposit owner's funds, and eth used to buy creators gov. tokens to owner's account
+        // Deposit owner's funds, and eth used to buy creators gov. tokens to owner's account
         _safeTransferETHWithFallback(
             owner(),
             buyTokenPaymentShares.buyersShare + buyTokenPaymentShares.creatorsGovernancePayment
         );
 
-        //Transfer ETH to creators
+        // Transfer ETH to creators
         if (buyTokenPaymentShares.creatorsDirectPayment > 0) {
             _safeTransferETHWithFallback(creatorsAddress, buyTokenPaymentShares.creatorsDirectPayment);
         }
 
-        //Mint tokens to creators
-        if (totalTokensForCreators > 0 && creatorsAddress != address(0)) {
+        // Mint tokens to creators
+        if (totalTokensForCreators > 0) {
             _mint(creatorsAddress, uint256(totalTokensForCreators));
         }
 
         // Stores total bps, ensure it is 10_000 later
         uint256 bpsSum = 0;
         uint256 addressesLength = addresses.length;
+
+        // Tokens to emit to buyers - ENSURE we do this after minting to creators, so that the total supply is correct
+        int totalTokensForBuyers = buyTokenPaymentShares.buyersShare > 0
+            ? getTokenQuoteForEther(buyTokenPaymentShares.buyersShare)
+            : int(0);
 
         //Mint tokens to buyers
         for (uint256 i = 0; i < addressesLength; i++) {
@@ -284,7 +273,7 @@ contract RevolutionPointsEmitter is
         return
             vrgdac.xToY({
                 timeSinceStart: toDaysWadUnsafe(block.timestamp - startTime),
-                sold: emittedTokenWad,
+                sold: int(token.totalSupply()),
                 amount: int(amount)
             });
     }
@@ -301,7 +290,7 @@ contract RevolutionPointsEmitter is
         return
             vrgdac.yToX({
                 timeSinceStart: toDaysWadUnsafe(block.timestamp - startTime),
-                sold: emittedTokenWad,
+                sold: int(token.totalSupply()),
                 amount: int(etherAmount)
             });
     }
@@ -318,7 +307,7 @@ contract RevolutionPointsEmitter is
         return
             vrgdac.yToX({
                 timeSinceStart: toDaysWadUnsafe(block.timestamp - startTime),
-                sold: emittedTokenWad,
+                sold: int(token.totalSupply()),
                 amount: int(((paymentAmount - computeTotalReward(paymentAmount)) * (10_000 - creatorRateBps)) / 10_000)
             });
     }

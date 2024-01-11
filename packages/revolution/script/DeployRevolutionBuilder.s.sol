@@ -35,6 +35,7 @@ contract DeployContracts is Script {
         address maxHeapImpl;
         address revolutionPointsImpl;
         address revolutionPointsEmitterImpl;
+        address revolutionVotingPowerImpl;
         address builderImpl;
     }
 
@@ -77,26 +78,13 @@ contract DeployContracts is Script {
                 address(0),
                 address(0),
                 address(0),
+                address(0),
                 address(0)
             )
         );
 
         deployedContracts.builderProxy = address(
             new ERC1967Proxy(deployedContracts.builderImpl0, abi.encodeWithSignature("initialize(address)", owner))
-        );
-
-        deployedContracts.builderImpl = address(
-            new RevolutionBuilder(
-                deployedContracts.revolutionTokenImpl,
-                deployedContracts.descriptorImpl,
-                deployedContracts.auctionImpl,
-                deployedContracts.executorImpl,
-                deployedContracts.daoImpl,
-                deployedContracts.cultureIndexImpl,
-                deployedContracts.revolutionPointsImpl,
-                deployedContracts.revolutionPointsEmitterImpl,
-                deployedContracts.maxHeapImpl
-            )
         );
     }
 
@@ -121,6 +109,24 @@ contract DeployContracts is Script {
         deployedContracts.revolutionPointsImpl = address(new RevolutionPoints(address(deployedContracts.builderProxy)));
         deployedContracts.revolutionPointsEmitterImpl = address(
             new RevolutionPointsEmitter(address(deployedContracts.builderProxy), protocolRewards, rewardsRecipient)
+        );
+        deployedContracts.revolutionVotingPowerImpl = address(
+            new RevolutionToken(address(deployedContracts.builderProxy))
+        );
+
+        deployedContracts.builderImpl = address(
+            new RevolutionBuilder(
+                deployedContracts.revolutionTokenImpl,
+                deployedContracts.descriptorImpl,
+                deployedContracts.auctionImpl,
+                deployedContracts.executorImpl,
+                deployedContracts.daoImpl,
+                deployedContracts.cultureIndexImpl,
+                deployedContracts.revolutionPointsImpl,
+                deployedContracts.revolutionPointsEmitterImpl,
+                deployedContracts.maxHeapImpl,
+                deployedContracts.revolutionVotingPowerImpl
+            )
         );
     }
 
@@ -181,6 +187,15 @@ contract DeployContracts is Script {
                 abi.encodePacked(
                     "PointsEmitter implementation: ",
                     addressToString(deployedContracts.revolutionPointsEmitterImpl)
+                )
+            )
+        );
+        vm.writeLine(
+            filePath,
+            string(
+                abi.encodePacked(
+                    "RevolutionVotingPower implementation: ",
+                    addressToString(deployedContracts.revolutionVotingPowerImpl)
                 )
             )
         );

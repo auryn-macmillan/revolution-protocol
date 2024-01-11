@@ -25,5 +25,15 @@ interface RevolutionBuilderTypesV1 {
         address revolutionToken;
         /// @notice Address for deployed MaxHeap contract
         address maxHeap;
+        /// @notice Address for deployed RevolutionVotingPower contract
+        address revolutionVotingPower;
+    }
+
+    struct InitialProxySetup {
+        address revolutionToken;
+        address executor;
+        address revolutionVotingPower;
+        address dao;
+        bytes32 salt;
     }
 }

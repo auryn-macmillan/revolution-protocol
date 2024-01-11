@@ -62,8 +62,8 @@ contract RevolutionToken is
     // IPFS content hash of contract-level metadata
     string private _contractURIHash;
 
-    // The Verb art pieces
-    mapping(uint256 => ICultureIndex.ArtPiece) public artPieces;
+    // The CultureIndex art pieces mapping (verbId => artPiece ID)
+    mapping(uint256 => uint256) public artPieces;
 
     ///                                                          ///
     ///                          MODIFIERS                       ///
@@ -132,7 +132,7 @@ contract RevolutionToken is
         address _initialOwner,
         address _descriptor,
         address _cultureIndex,
-        IRevolutionBuilder.RevolutionTokenParams memory _revolutionTokenParams
+        IRevolutionBuilder.RevolutionTokenParams calldata _revolutionTokenParams
     ) external initializer {
         if (msg.sender != address(manager)) revert ONLY_MANAGER_CAN_INITIALIZE();
 
@@ -191,7 +191,8 @@ contract RevolutionToken is
      * @dev See {IERC721Metadata-tokenURI}.
      */
     function tokenURI(uint256 tokenId) public view override returns (string memory) {
-        return descriptor.tokenURI(tokenId, artPieces[tokenId].metadata);
+        if (ownerOf(tokenId) == address(0)) revert();
+        return descriptor.tokenURI(tokenId, cultureIndex.getPieceById(artPieces[tokenId]).metadata);
     }
 
     /**
@@ -199,7 +200,8 @@ contract RevolutionToken is
      * with the JSON contents directly inlined.
      */
     function dataURI(uint256 tokenId) public view override returns (string memory) {
-        return descriptor.dataURI(tokenId, artPieces[tokenId].metadata);
+        if (ownerOf(tokenId) == address(0)) revert();
+        return descriptor.dataURI(tokenId, cultureIndex.getPieceById(artPieces[tokenId]).metadata);
     }
 
     /**
@@ -270,39 +272,20 @@ contract RevolutionToken is
      * @param verbId The ID of the art piece.
      * @return The ArtPiece struct associated with the given ID.
      */
-    function getArtPieceById(uint256 verbId) public view returns (ICultureIndex.ArtPiece memory) {
-        if (verbId > _currentVerbId) revert INVALID_PIECE_ID();
-        return artPieces[verbId];
+    function getArtPieceById(uint256 verbId) external view returns (ICultureIndex.ArtPiece memory) {
+        if (verbId >= _currentVerbId) revert INVALID_PIECE_ID();
+        return cultureIndex.getPieceById(artPieces[verbId]);
     }
 
     /**
      * @notice Mint a Verb with `verbId` to the provided `to` address. Pulls the top voted art piece from the CultureIndex.
      */
     function _mintTo(address to) internal returns (uint256) {
-        ICultureIndex.ArtPiece memory artPiece = cultureIndex.getTopVotedPiece();
-        uint256 artPieceCreatorCount = artPiece.creators.length;
-
-        // Perform all checks
-        if (artPieceCreatorCount > cultureIndex.MAX_NUM_CREATORS()) revert TOO_MANY_CREATORS();
-
         // Use try/catch to handle potential failure
-        try cultureIndex.dropTopVotedPiece() returns (ICultureIndex.ArtPiece memory _artPiece) {
-            artPiece = _artPiece;
+        try cultureIndex.dropTopVotedPiece() returns (ICultureIndex.ArtPieceCondensed memory artPiece) {
             uint256 verbId = _currentVerbId++;
 
-            ICultureIndex.ArtPiece storage newPiece = artPieces[verbId];
-
-            newPiece.pieceId = artPiece.pieceId;
-            newPiece.metadata = artPiece.metadata;
-            newPiece.isDropped = artPiece.isDropped;
-            newPiece.sponsor = artPiece.sponsor;
-            newPiece.totalPointsSupply = artPiece.totalPointsSupply;
-            newPiece.quorumVotes = artPiece.quorumVotes;
-            newPiece.totalVotesSupply = artPiece.totalVotesSupply;
-
-            for (uint i = 0; i < artPieceCreatorCount; i++) {
-                newPiece.creators.push(artPiece.creators[i]);
-            }
+            artPieces[verbId] = artPiece.pieceId;
 
             _mint(to, verbId);
 
@@ -310,7 +293,6 @@ contract RevolutionToken is
 
             return verbId;
         } catch {
-            // Handle failure (e.g., revert, emit an event, set a flag, etc.)
             revert("dropTopVotedPiece failed");
         }
     }

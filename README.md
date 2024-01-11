@@ -86,27 +86,6 @@ If `slither .` doesn't work, consider the following command:
 slither src --checklist --show-ignored-findings --filter-paths "@openzeppelin" --config-file="../../slither.config.json"
 ```
 
-# Developer Workflow
-
-creds @ourzora
-
-## Publishing the package; Generating changesets, versioning, building and Publishing.
-
-Publishing happens in the following steps:
-
-- Some changes are made to the repo; this can include smart contract changes or additions, if smart contracts are changed, tests should be created or updated to reflect the changes.
-- The changes are committed to a branch which is **pushed** to **github**.
-- A **pr** is **opened** for this branch.
-- The changes are reviewed, if they are **approved**:
-- _If there are changes to the smart contracts that should be deployed_: the contract should be. Deploying the contract results in the addresses of the deployed contracts being updated in the corresponding `./addresses/{chainId}.json` file. This file should be committed and pushed to github.
-- Running the command `npx changeset` will generate **a new changeset** in the `./changesets` directory. This changeset will be used to determine the next version of the bundled packages; this commit should then be pushed.
-- The changeset and smart contract addresses are pushed to the branch.
-- The pr is merged into main - any changesets in the PR are detected by a github action `release`, which will then **open a new PR** with proper versions and readme updated in each each package. If more changesets are pushed to main before this branch is merged, the PR will continuously update the version of the packages according to the changeset specification.
-
-7. That version is merged into main along with the new versions.
-
-8. The package is then published to npm.
-
 # revolution overview
 
 Instead of [auctioning](https://nouns.wtf/) off a generative PFP like Nouns, anyone can upload art pieces to the [CultureIndex](https://github.com/collectivexyz/revolution-protocol/blob/main/packages/revolution/src/CultureIndex.sol) contract, and the community votes on their favorite art pieces.

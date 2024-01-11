@@ -18,22 +18,26 @@ pragma solidity ^0.8.22;
 import { Ownable2StepUpgradeable } from "@openzeppelin/contracts-upgradeable/access/Ownable2StepUpgradeable.sol";
 import { PausableUpgradeable } from "@openzeppelin/contracts-upgradeable/utils/PausableUpgradeable.sol";
 import { Initializable } from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
+import { EIP712Upgradeable } from "@openzeppelin/contracts-upgradeable/utils/cryptography/EIP712Upgradeable.sol";
+import { ReentrancyGuardUpgradeable } from "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol";
 
 import { ERC20VotesUpgradeable } from "./base/erc20/ERC20VotesUpgradeable.sol";
-import { EIP712Upgradeable } from "@openzeppelin/contracts-upgradeable/utils/cryptography/EIP712Upgradeable.sol";
 
 import { IRevolutionBuilder } from "./interfaces/IRevolutionBuilder.sol";
+import { IRevolutionPoints } from "./interfaces/IRevolutionPoints.sol";
 
-contract RevolutionPoints is Initializable, ERC20VotesUpgradeable, Ownable2StepUpgradeable {
-    ///                                                          ///
-    ///                         IMMUTABLES                       ///
-    ///                                                          ///
+contract RevolutionPoints is
+    IRevolutionPoints,
+    Initializable,
+    ERC20VotesUpgradeable,
+    Ownable2StepUpgradeable,
+    ReentrancyGuardUpgradeable
+{
+    // An address who has permissions to mint Revolution Points
+    address public minter;
 
-    /// @dev Revert if transfer is attempted. This is a nontransferable token.
-    error TRANSFER_NOT_ALLOWED();
-
-    /// @dev Revert if not the manager
-    error ONLY_MANAGER();
+    // Whether the minter can be updated
+    bool public isMinterLocked;
 
     ///                                                          ///
     ///                         IMMUTABLES                       ///
@@ -41,6 +45,26 @@ contract RevolutionPoints is Initializable, ERC20VotesUpgradeable, Ownable2StepU
 
     /// @notice The contract upgrade manager
     IRevolutionBuilder private immutable manager;
+
+    ///                                                          ///
+    ///                          MODIFIERS                       ///
+    ///                                                          ///
+
+    /**
+     * @notice Require that the minter has not been locked.
+     */
+    modifier whenMinterNotLocked() {
+        if (isMinterLocked) revert MINTER_LOCKED();
+        _;
+    }
+
+    /**
+     * @notice Require that the sender is the minter.
+     */
+    modifier onlyMinter() {
+        if (msg.sender != minter) revert NOT_MINTER();
+        _;
+    }
 
     ///                                                          ///
     ///                         CONSTRUCTOR                      ///
@@ -60,6 +84,7 @@ contract RevolutionPoints is Initializable, ERC20VotesUpgradeable, Ownable2StepU
         string calldata _name,
         string calldata _symbol
     ) internal onlyInitializing {
+        __ReentrancyGuard_init();
         __Ownable_init(_initialOwner);
         __ERC20_init(_name, _symbol);
         __EIP712_init(_name, "1");
@@ -67,14 +92,23 @@ contract RevolutionPoints is Initializable, ERC20VotesUpgradeable, Ownable2StepU
 
     /// @notice Initializes a DAO's ERC-20 governance token contract
     /// @param _initialOwner The address of the initial owner
-    /// @param _revolutionPointsParams The params of the token
+    /// @param _minter The address of the minter
+    /// @param _tokenParams The params of the token
     function initialize(
         address _initialOwner,
-        IRevolutionBuilder.PointsParams calldata _revolutionPointsParams
+        address _minter,
+        IRevolutionBuilder.PointsTokenParams calldata _tokenParams
     ) external initializer {
         if (msg.sender != address(manager)) revert ONLY_MANAGER();
 
-        __RevolutionPoints_init(_initialOwner, _revolutionPointsParams.name, _revolutionPointsParams.symbol);
+        if (_minter == address(0)) revert INVALID_ADDRESS_ZERO();
+        if (_initialOwner == address(0)) revert INVALID_ADDRESS_ZERO();
+
+        minter = _minter;
+
+        __RevolutionPoints_init(_initialOwner, _tokenParams.name, _tokenParams.symbol);
+
+        emit MinterUpdated(_minter);
     }
 
     /**
@@ -137,7 +171,7 @@ contract RevolutionPoints is Initializable, ERC20VotesUpgradeable, Ownable2StepU
         _update(address(0), account, value);
     }
 
-    function mint(address account, uint256 amount) public onlyOwner {
+    function mint(address account, uint256 amount) public nonReentrant onlyMinter {
         _mint(account, amount);
     }
 
@@ -160,5 +194,30 @@ contract RevolutionPoints is Initializable, ERC20VotesUpgradeable, Ownable2StepU
      */
     function _spendAllowance(address owner, address spender, uint256 value) internal virtual override {
         revert TRANSFER_NOT_ALLOWED();
+    }
+
+    ///                                                          ///
+    ///                       ACCESS CONTROL                     ///
+    ///                                                          ///
+
+    /**
+     * @notice Set the token minter.
+     * @dev Only callable by the owner when not locked.
+     */
+    function setMinter(address _minter) external override onlyOwner nonReentrant whenMinterNotLocked {
+        if (_minter == address(0)) revert INVALID_ADDRESS_ZERO();
+        minter = _minter;
+
+        emit MinterUpdated(_minter);
+    }
+
+    /**
+     * @notice Lock the minter.
+     * @dev This cannot be reversed and is only callable by the owner when not locked.
+     */
+    function lockMinter() external override onlyOwner whenMinterNotLocked {
+        isMinterLocked = true;
+
+        emit MinterLocked();
     }
 }

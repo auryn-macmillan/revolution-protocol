@@ -1748,7 +1748,7 @@ interface IRevolutionBuilder is IUUPS {
     /// @param revolutionPointsEmitter The RevolutionPointsEmitter address
     /// @param revolutionPoints The dao address
     /// @param maxHeap The maxHeap address
-    event DAODeployed(
+    event RevolutionDeployed(
         address revolutionToken,
         address descriptor,
         address auction,

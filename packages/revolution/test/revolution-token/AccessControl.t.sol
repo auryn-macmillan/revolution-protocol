@@ -162,6 +162,8 @@ contract TokenAccessControlTest is RevolutionTokenTestSuite {
         vm.stopPrank();
         vm.startPrank(address(auction));
         createDefaultArtPiece();
+        vm.roll(vm.getBlockNumber() + 1);
+
         uint256 tokenId = revolutionToken.mint();
 
         // Try to burn token as a minter
@@ -195,12 +197,14 @@ contract TokenAccessControlTest is RevolutionTokenTestSuite {
     /// @dev Tests that the minter can be set and locked appropriately
     function testMinterAssignmentAndLocking() public {
         createDefaultArtPiece();
+        vm.roll(vm.getBlockNumber() + 1);
+
         // Test setting the minter and minting a token
         revolutionToken.setMinter(address(0x2));
         vm.startPrank(address(0x2)); // simulate calls from the new minter address
         revolutionToken.mint();
 
-        vm.startPrank(address(dao));
+        vm.startPrank(address(executor));
         // Lock the minter and attempt to change it, expecting a revert
         revolutionToken.lockMinter();
         vm.expectRevert(abi.encodeWithSignature("MINTER_LOCKED()"));
@@ -218,7 +222,7 @@ contract TokenAccessControlTest is RevolutionTokenTestSuite {
         vm.startPrank(address(manager));
         IDescriptor(newDescriptor).initialize(address(this), "Verb");
 
-        vm.startPrank(address(dao));
+        vm.startPrank(address(executor));
         revolutionToken.setDescriptor(IDescriptor(newDescriptor));
 
         // Lock the descriptor and attempt to change it, expecting a revert

@@ -60,6 +60,7 @@ import { VersionedContract } from "../version/VersionedContract.sol";
 import "./RevolutionDAOInterfaces.sol";
 import { IRevolutionDAO } from "../interfaces/IRevolutionDAO.sol";
 import { IRevolutionBuilder } from "../interfaces/IRevolutionBuilder.sol";
+import { IRevolutionVotingPower } from "../interfaces/IRevolutionVotingPower.sol";
 import { EIP712Upgradeable } from "@openzeppelin/contracts-upgradeable/utils/cryptography/EIP712Upgradeable.sol";
 
 contract RevolutionDAOLogicV1 is
@@ -145,64 +146,56 @@ contract RevolutionDAOLogicV1 is
 
     /**
      * @notice Used to initialize the contract during delegator contructor
-     * @param executor_ The address of the DAOExecutor
-     * @param revolutionToken_ The address of the ERC-721 token
-     * @param revolutionPoints_ The address of the ERC-20 token
-     * @param govParams_ The initial governance parameters
+     * @param _executor The address of the DAOExecutor
+     * @param _votingPower The address of the RevolutionVotingPower contract
+     * @param _govParams The initial governance parameters
      */
     function initialize(
-        address executor_,
-        address revolutionToken_,
-        address revolutionPoints_,
-        IRevolutionBuilder.GovParams calldata govParams_
+        address _executor,
+        address _votingPower,
+        IRevolutionBuilder.GovParams calldata _govParams
     ) public virtual initializer {
-        if (msg.sender != address(manager)) revert NOT_MANAGER();
+        // Not using manager here since this is called by the RevolutionDAOProxyV1
+        if (msg.sender != admin) revert ADMIN_ONLY();
 
-        if (executor_ == address(0)) revert INVALID_EXECUTOR_ADDRESS();
+        if (_executor == address(0)) revert INVALID_EXECUTOR_ADDRESS();
 
-        if (revolutionToken_ == address(0)) revert INVALID_ERC721_ADDRESS();
+        if (_votingPower == address(0)) revert INVALID_VOTINGPOWER_ADDRESS();
 
-        if (revolutionPoints_ == address(0)) revert INVALID_ERC20_ADDRESS();
-
-        if (govParams_.votingPeriod < MIN_VOTING_PERIOD || govParams_.votingPeriod > MAX_VOTING_PERIOD)
+        if (_govParams.votingPeriod < MIN_VOTING_PERIOD || _govParams.votingPeriod > MAX_VOTING_PERIOD)
             revert INVALID_VOTING_PERIOD();
 
-        if (govParams_.votingDelay < MIN_VOTING_DELAY || govParams_.votingDelay > MAX_VOTING_DELAY)
+        if (_govParams.votingDelay < MIN_VOTING_DELAY || _govParams.votingDelay > MAX_VOTING_DELAY)
             revert INVALID_VOTING_DELAY();
 
         if (
-            govParams_.proposalThresholdBPS < MIN_PROPOSAL_THRESHOLD_BPS ||
-            govParams_.proposalThresholdBPS > MAX_PROPOSAL_THRESHOLD_BPS
+            _govParams.proposalThresholdBPS < MIN_PROPOSAL_THRESHOLD_BPS ||
+            _govParams.proposalThresholdBPS > MAX_PROPOSAL_THRESHOLD_BPS
         ) revert INVALID_PROPOSAL_THRESHOLD_BPS();
 
-        if (govParams_.revolutionTokenVoteWeight <= 0) revert INVALID_ERC721_VOTING_WEIGHT();
-
         // Initialize EIP-712 support
-        __EIP712_init(govParams_.daoName, "1");
+        __EIP712_init(_govParams.daoName, "1");
 
         // Grant ownership to the executor
-        __Ownable_init(executor_);
+        __Ownable_init(_executor);
 
-        emit VotingPeriodSet(votingPeriod, govParams_.votingPeriod);
-        emit VotingDelaySet(votingDelay, govParams_.votingDelay);
-        emit ProposalThresholdBPSSet(proposalThresholdBPS, govParams_.proposalThresholdBPS);
+        emit VotingPeriodSet(votingPeriod, _govParams.votingPeriod);
+        emit VotingDelaySet(votingDelay, _govParams.votingDelay);
+        emit ProposalThresholdBPSSet(proposalThresholdBPS, _govParams.proposalThresholdBPS);
 
-        timelock = IDAOExecutor(executor_);
-        revolutionToken = RevolutionTokenLike(revolutionToken_);
-        revolutionPoints = PointsLike(revolutionPoints_);
-        vetoer = govParams_.vetoer;
-        votingPeriod = govParams_.votingPeriod;
-        votingDelay = govParams_.votingDelay;
-        proposalThresholdBPS = govParams_.proposalThresholdBPS;
-        revolutionTokenVoteWeight = govParams_.revolutionTokenVoteWeight;
-        name = govParams_.daoName;
+        timelock = IDAOExecutor(_executor);
+        votingPower = IRevolutionVotingPower(_votingPower);
+        vetoer = _govParams.vetoer;
+        votingPeriod = _govParams.votingPeriod;
+        votingDelay = _govParams.votingDelay;
+        proposalThresholdBPS = _govParams.proposalThresholdBPS;
+        name = _govParams.daoName;
 
-        // TODO set these dynamic quorum params
-        // _setDynamicQuorumParams(
-        //     govParams_.dynamicQuorumParams.minQuorumVotesBPS,
-        //     govParams_.dynamicQuorumParams.maxQuorumVotesBPS,
-        //     govParams_.dynamicQuorumParams.quorumCoefficient
-        // );
+        _setDynamicQuorumParams(
+            _govParams.dynamicQuorumParams.minQuorumVotesBPS,
+            _govParams.dynamicQuorumParams.maxQuorumVotesBPS,
+            _govParams.dynamicQuorumParams.quorumCoefficient
+        );
     }
 
     struct ProposalTemp {
@@ -233,13 +226,13 @@ contract RevolutionDAOLogicV1 is
     ) public returns (uint256) {
         ProposalTemp memory temp;
 
-        temp.totalWeightedSupply = _getWeightedTotalSupply();
-        temp.revolutionPointsSupply = revolutionPoints.totalSupply();
-        temp.revolutionTokenSupply = revolutionToken.totalSupply();
+        temp.totalWeightedSupply = votingPower.getTotalVotesSupply();
+        temp.revolutionPointsSupply = votingPower.points().totalSupply();
+        temp.revolutionTokenSupply = votingPower.token().totalSupply();
 
         temp.proposalThreshold = bps2Uint(proposalThresholdBPS, temp.totalWeightedSupply);
 
-        if (getTotalVotes(msg.sender, block.number - 1) <= temp.proposalThreshold)
+        if (votingPower.getPastVotes(msg.sender, block.number - 1) <= temp.proposalThreshold)
             revert PROPOSER_VOTES_BELOW_THRESHOLD();
 
         if (
@@ -376,30 +369,6 @@ contract RevolutionDAOLogicV1 is
     }
 
     /**
-     * @notice Calculates the total number of votes given an account at a specific block
-     * @param account The address of the account to check
-     * @param blockNumber The block number to get the votes at
-     */
-    function getTotalVotes(address account, uint256 blockNumber) public view returns (uint256) {
-        uint256 revolutionTokenAccountVotes = revolutionToken.getPastVotes(account, blockNumber);
-
-        uint256 revolutionPointsAccountVotes = revolutionPoints.getPastVotes(account, blockNumber);
-
-        return (revolutionTokenAccountVotes * revolutionTokenVoteWeight) + revolutionPointsAccountVotes;
-    }
-
-    /**
-     * @notice Calculates the total supply of votes based on the current Verb token and points supply and the Revolution token voting weight
-     */
-    function _getWeightedTotalSupply() internal view returns (uint256) {
-        uint256 revolutionTokenSupply = revolutionToken.totalSupply();
-
-        uint256 revolutionPointsSupply = revolutionPoints.totalSupply();
-
-        return (revolutionTokenSupply * revolutionTokenVoteWeight) + revolutionPointsSupply;
-    }
-
-    /**
      * @notice Returns the number of decimals used to get its user representation.
      * For example, if `decimals` equals `2`, a balance of `505` votes should
      * be displayed to a user as `5.05` (`505 / 10 ** 2`).
@@ -424,7 +393,7 @@ contract RevolutionDAOLogicV1 is
         Proposal storage proposal = _proposals[proposalId];
         if (
             msg.sender != proposal.proposer &&
-            getTotalVotes(proposal.proposer, block.number - 1) > proposal.proposalThreshold
+            votingPower.getPastVotes(proposal.proposer, block.number - 1) > proposal.proposalThreshold
         ) {
             revert PROPOSER_ABOVE_THRESHOLD();
         }
@@ -662,7 +631,7 @@ contract RevolutionDAOLogicV1 is
         if (receipt.hasVoted) revert VOTER_ALREADY_VOTED();
 
         /// @notice: Unlike GovernerBravo, votes are considered from the block the proposal was created in order to normalize quorumVotes and proposalThreshold metrics
-        uint256 votes = getTotalVotes(voter, proposalCreationBlock(proposal));
+        uint256 votes = votingPower.getPastVotes(voter, proposalCreationBlock(proposal));
 
         if (support == 0) {
             proposal.againstVotes = proposal.againstVotes + votes;
@@ -953,7 +922,7 @@ contract RevolutionDAOLogicV1 is
      * Differs from `GovernerBravo` which uses fixed amount
      */
     function proposalThreshold() public view returns (uint256) {
-        return bps2Uint(proposalThresholdBPS, _getWeightedTotalSupply());
+        return bps2Uint(proposalThresholdBPS, votingPower.getTotalVotesSupply());
     }
 
     function proposalCreationBlock(Proposal storage proposal) internal view returns (uint256) {
@@ -1087,14 +1056,14 @@ contract RevolutionDAOLogicV1 is
      * @notice Current min quorum votes using Verb total supply and points total supply
      */
     function minQuorumVotes() public view returns (uint256) {
-        return bps2Uint(getDynamicQuorumParamsAt(block.number).minQuorumVotesBPS, _getWeightedTotalSupply());
+        return bps2Uint(getDynamicQuorumParamsAt(block.number).minQuorumVotesBPS, votingPower.getTotalVotesSupply());
     }
 
     /**
      * @notice Current max quorum votes using Verb total supply and points total supply
      */
     function maxQuorumVotes() public view returns (uint256) {
-        return bps2Uint(getDynamicQuorumParamsAt(block.number).maxQuorumVotesBPS, _getWeightedTotalSupply());
+        return bps2Uint(getDynamicQuorumParamsAt(block.number).maxQuorumVotesBPS, votingPower.getTotalVotesSupply());
     }
 
     function bps2Uint(uint256 bps, uint256 number) internal pure returns (uint256) {

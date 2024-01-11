@@ -62,6 +62,9 @@ contract MaxHeap is VersionedContract, UUPS, Ownable2StepUpgradeable, Reentrancy
     /// @notice Reverts for position zero
     error INVALID_POSITION_ZERO();
 
+    /// @notice Reverts for invalid piece ID
+    error INVALID_PIECE_ID();
+
     ///                                                          ///
     ///                         INITIALIZER                      ///
     ///                                                          ///
@@ -82,16 +85,20 @@ contract MaxHeap is VersionedContract, UUPS, Ownable2StepUpgradeable, Reentrancy
         __ReentrancyGuard_init();
     }
 
-    /// @notice Struct to represent an item in the heap by it's ID
+    /// @notice Mapping to represent an item in the heap by it's itemId: key = index in heap (the *size* incremented) | value = itemId
     mapping(uint256 => uint256) public heap;
 
+    /// @notice the number of items in the heap
     uint256 public size = 0;
 
-    /// @notice Mapping to keep track of the value of an item in the heap
-    mapping(uint256 => uint256) public valueMapping;
-
-    /// @notice Mapping to keep track of the position of an item in the heap
-    mapping(uint256 => uint256) public positionMapping;
+    /// @notice composite mapping of the heap position (index in the heap) and priority value of a specific item in the heap
+    /// To enable value updates and indexing on external itemIds
+    /// key = itemId
+    struct Item {
+        uint256 value;
+        uint256 heapIndex;
+    }
+    mapping(uint256 => Item) public items;
 
     /// @notice Get the parent index of a given position
     /// @param pos The position for which to find the parent
@@ -106,21 +113,21 @@ contract MaxHeap is VersionedContract, UUPS, Ownable2StepUpgradeable, Reentrancy
     /// @param spos The position of the second node
     function swap(uint256 fpos, uint256 spos) private {
         (heap[fpos], heap[spos]) = (heap[spos], heap[fpos]);
-        (positionMapping[heap[fpos]], positionMapping[heap[spos]]) = (fpos, spos);
+        (items[heap[fpos]].heapIndex, items[heap[spos]].heapIndex) = (fpos, spos);
     }
 
     /// @notice Reheapify the heap starting at a given position
     /// @dev This ensures that the heap property is maintained
     /// @param pos The starting position for the heapify operation
     function maxHeapify(uint256 pos) internal {
-        uint256 left = 2 * pos + 1;
-        uint256 right = 2 * pos + 2;
-
-        uint256 posValue = valueMapping[heap[pos]];
-        uint256 leftValue = valueMapping[heap[left]];
-        uint256 rightValue = valueMapping[heap[right]];
-
         if (pos >= (size / 2) && pos <= size) return;
+
+        uint256 left = 2 * pos + 1;
+        uint256 right = left + 1; // 2 * pos + 2, done to save gas
+
+        uint256 posValue = items[heap[pos]].value;
+        uint256 leftValue = left < size ? items[heap[left]].value : 0;
+        uint256 rightValue = right < size ? items[heap[right]].value : 0;
 
         if (posValue < leftValue || posValue < rightValue) {
             if (leftValue > rightValue) {
@@ -138,13 +145,13 @@ contract MaxHeap is VersionedContract, UUPS, Ownable2StepUpgradeable, Reentrancy
     /// @param value The value to insert
     function insert(uint256 itemId, uint256 value) public onlyAdmin {
         heap[size] = itemId;
-        valueMapping[itemId] = value; // Update the value mapping
-        positionMapping[itemId] = size; // Update the position mapping
+        items[itemId] = Item({ value: value, heapIndex: size }); // Update the value and heap index of the new item
 
         uint256 current = size;
-        while (current != 0 && valueMapping[heap[current]] > valueMapping[heap[parent(current)]]) {
-            swap(current, parent(current));
-            current = parent(current);
+        while (current != 0 && items[heap[current]].value > items[heap[parent(current)]].value) {
+            uint256 parentOfCurrent = parent(current);
+            swap(current, parentOfCurrent);
+            current = parentOfCurrent;
         }
         size++;
     }
@@ -154,16 +161,19 @@ contract MaxHeap is VersionedContract, UUPS, Ownable2StepUpgradeable, Reentrancy
     /// @param newValue The new value for the item
     /// @dev This function adjusts the heap to maintain the max-heap property after updating the vote count
     function updateValue(uint256 itemId, uint256 newValue) public onlyAdmin {
-        uint256 position = positionMapping[itemId];
-        uint256 oldValue = valueMapping[itemId];
+        //ensure itemId exists in the heap
+        if (items[itemId].heapIndex >= size) revert INVALID_PIECE_ID();
 
-        // Update the value in the valueMapping
-        valueMapping[itemId] = newValue;
+        uint256 position = items[itemId].heapIndex;
+        uint256 oldValue = items[itemId].value;
+
+        // Update the value
+        items[itemId].value = newValue;
 
         // Decide whether to perform upwards or downwards heapify
         if (newValue > oldValue) {
             // Upwards heapify
-            while (position != 0 && valueMapping[heap[position]] > valueMapping[heap[parent(position)]]) {
+            while (position != 0 && items[heap[position]].value > items[heap[parent(position)]].value) {
                 swap(position, parent(position));
                 position = parent(position);
             }
@@ -172,15 +182,33 @@ contract MaxHeap is VersionedContract, UUPS, Ownable2StepUpgradeable, Reentrancy
 
     /// @notice Extract the maximum element from the heap
     /// @dev The function will revert if the heap is empty
+    /// The values for the popped node are removed from the items mapping
     /// @return The maximum element from the heap
     function extractMax() external onlyAdmin returns (uint256, uint256) {
         if (size == 0) revert EMPTY_HEAP();
 
+        // itemId of the node with the max value at the root of the heap
         uint256 popped = heap[0];
+
+        // get priority value of the popped node
+        uint256 returnValue = items[popped].value;
+
+        // remove popped node values from the items mapping for the popped node
+        delete items[popped];
+
+        // set the root node to the farthest leaf node and decrement the size
         heap[0] = heap[--size];
+
+        // update the heap index for the previously farthest leaf node
+        items[heap[0]].heapIndex = 0;
+
+        //delete the farthest leaf node
+        delete heap[size];
+
+        //maintain heap property
         maxHeapify(0);
 
-        return (popped, valueMapping[popped]);
+        return (popped, returnValue);
     }
 
     /// @notice Get the maximum element from the heap
@@ -189,7 +217,7 @@ contract MaxHeap is VersionedContract, UUPS, Ownable2StepUpgradeable, Reentrancy
     function getMax() public view returns (uint256, uint256) {
         if (size == 0) revert EMPTY_HEAP();
 
-        return (heap[0], valueMapping[heap[0]]);
+        return (heap[0], items[heap[0]].value);
     }
 
     ///                                                          ///

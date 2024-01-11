@@ -29,6 +29,84 @@ contract MaxHeapTestSuite is RevolutionBuilderTest {
         vm.startPrank(address(cultureIndex));
     }
 
+    function testOldHeapEntriesNotRemoved() public {
+        //this was a test case to evoke an error from previously bad contract logic as found in the C4_audit_0
+
+        uint popped;
+        uint value;
+
+        maxHeap.insert(0, 100);
+        maxHeap.insert(1, 50);
+        maxHeap.insert(2, 25);
+        //size == 3
+        /*
+            0 (100)
+            /     \
+         1 (50)   2 (25)
+        */
+        // heap contains 3 items; we extract maximum one
+        (popped, value) = maxHeap.extractMax();
+        assertEq(popped, 0, "Popped should be 0 after extracting max");
+        assertEq(value, 100, "Value should be 100 after extracting max");
+
+        //size == 2
+        /*
+             1 (50)
+            /      -
+          2 (25)   2 (25)
+        */
+        // heap contains 2 items; we decrease value of 1 and in effect, 1 is removed from the heap
+        maxHeap.updateValue(1, 1);
+        /*
+              2 (25)
+             /     - 
+          2 (25)   1 (1)
+        */
+        (popped, value) = maxHeap.extractMax();
+        assertEq(popped, 2, "Popped should be 2 after extracting max");
+        assertEq(value, 25, "Value should be 25 after extracting max");
+        /*
+            2
+           - -
+          2   1
+        */
+
+        // Ensure 2 will not be the maximum value for the second time
+        (popped, value) = maxHeap.extractMax();
+        // assert(popped == 1 && value == 1);
+        assertEq(popped, 1, "Popped should be 1 after extracting max");
+        assertEq(value, 1, "Value should be 1 after extracting max");
+    }
+
+    function testOldHeapEntriesNotRemove2() public {
+        //this was a test case to evoke an error from previously bad contract logic as found in the C4_audit_0
+
+        uint popped;
+        uint value;
+
+        maxHeap.insert(0, 50);
+        maxHeap.insert(1, 100);
+        maxHeap.insert(2, 25);
+        //size == 3
+        // heap contains 3 items; we extract maximum one
+        (popped, value) = maxHeap.extractMax();
+        assertEq(popped, 1, "Popped should be 1 after extracting max");
+        assertEq(value, 100, "Value should be 100 after extracting max");
+
+        //size == 2
+        // heap contains 2 items; we decrease value of 1 and in effect, 1 is removed from the heap
+        maxHeap.updateValue(0, 1);
+        (popped, value) = maxHeap.extractMax();
+        assertEq(popped, 2, "Popped should be 2 after extracting max");
+        assertEq(value, 25, "Value should be 25 after extracting max");
+
+        // Ensure 2 will not be the maximum value for the second time
+        (popped, value) = maxHeap.extractMax();
+        // assert(popped == 1 && value == 1);
+        assertEq(popped, 0, "Popped should be 0 after extracting max");
+        assertEq(value, 1, "Value should be 1 after extracting max");
+    }
+
     /// @dev Tests that only the owner can call updateValue
     function testUpdateValueOnlyOwner() public {
         maxHeap.insert(1, 10); // Setup a state with an element
@@ -182,7 +260,7 @@ contract MaxHeapTestSuite is RevolutionBuilderTest {
         maxHeapTester._set(1, 200, 4); // Assume a '_set' function for testing
         maxHeapTester.maxHeapifyTest(1);
         uint256 itemId = maxHeapTester.heap(1);
-        uint256 val = maxHeapTester.valueMapping(itemId);
+        (uint256 val, ) = maxHeapTester.items(itemId);
         assertEq(val, 10, "Value should be 10 after heapify");
         assertEq(itemId, 1, "Item ID should be 1 after heapify");
     }
@@ -203,7 +281,7 @@ contract MaxHeapTester is MaxHeap {
     /// @param value The value to set at the given position
     function _set(uint256 pos, uint256 itemId, uint256 value) public {
         heap[pos] = itemId;
-        valueMapping[itemId] = value;
+        items[itemId].value = value;
     }
 
     /// @notice Function to call maxHeapify (ONLY FOR TESTING)

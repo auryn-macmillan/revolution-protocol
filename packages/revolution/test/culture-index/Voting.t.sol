@@ -16,43 +16,47 @@ contract CultureIndexVotingBasicTest is CultureIndexTestSuite {
     /// @dev Tests the vote weight calculation with ERC721 token
     function testCalculateVoteWeight() public {
         address voter = address(0x1);
-        uint256 pointsWeight = 100;
-        uint256 erc721Weight = 2; // Number of ERC721 tokens held by the voter
+        uint256 pointsBalance = 100;
+        uint256 erc721Balance = 2; // Number of ERC721 tokens held by the voter
 
         // Mock the Points and ERC721 token balances
         vm.mockCall(
-            address(cultureIndex.revolutionPoints()),
+            address(cultureIndex.votingPower().points()),
             abi.encodeWithSelector(revolutionPoints.getVotes.selector, voter),
-            abi.encode(pointsWeight)
+            abi.encode(pointsBalance)
         );
         vm.mockCall(
-            address(cultureIndex.revolutionToken()),
-            abi.encodeWithSelector(cultureIndex.getVotes.selector, voter),
-            abi.encode(erc721Weight)
+            address(cultureIndex.votingPower().token()),
+            abi.encodeWithSelector(cultureIndex.votingPower().getVotes.selector, voter),
+            abi.encode(erc721Balance)
         );
 
-        uint256 expectedWeight = pointsWeight + (erc721Weight * cultureIndex.revolutionTokenVoteWeight());
-        uint256 actualWeight = cultureIndex.getVotes(voter);
+        uint256 expectedWeight = pointsBalance + (erc721Balance * cultureIndex.revolutionTokenVoteWeight());
+        uint256 actualWeight = cultureIndex.votingPower().getVotesWithWeights(
+            voter,
+            1,
+            cultureIndex.revolutionTokenVoteWeight()
+        );
         assertEq(expectedWeight, actualWeight);
     }
 
     /// @dev Tests voting with ERC721 token
     function testVoteWithRevolutionToken() public {
-        uint pieceId = createDefaultArtPiece();
-
         address voter = address(0x1);
         uint256 erc721Weight = 3; // Number of ERC721 tokens held by the voter
 
         // Mock ERC721 token balance
         vm.mockCall(
-            address(cultureIndex.revolutionToken()),
-            abi.encodeWithSelector(cultureIndex.getPastVotes.selector, voter, block.number),
+            address(cultureIndex.votingPower().token()),
+            abi.encodeWithSelector(cultureIndex.votingPower().getPastVotes.selector, voter, block.number),
             abi.encode(erc721Weight)
         );
 
         // Cast vote
         vm.startPrank(voter);
-        vm.roll(block.number + 1);
+        vm.roll(vm.getBlockNumber() + 1);
+
+        uint pieceId = createDefaultArtPiece();
         cultureIndex.vote(pieceId);
         vm.stopPrank();
 
@@ -64,7 +68,6 @@ contract CultureIndexVotingBasicTest is CultureIndexTestSuite {
 
     /// @dev Tests impact of vote weights on top-voted piece ranking
     function testVoteWeightImpactOnTopVotedPiece() public {
-        uint256 pieceId1 = createDefaultArtPiece();
         address voter1 = address(0x1);
         address voter2 = address(0x2);
 
@@ -72,18 +75,18 @@ contract CultureIndexVotingBasicTest is CultureIndexTestSuite {
         vm.stopPrank();
         vm.startPrank(address(revolutionPointsEmitter));
         revolutionPoints.mint(voter1, 100);
-        vm.roll(block.number + 1); // Roll forward to ensure votes are snapshotted
+        vm.roll(vm.getBlockNumber() + 1); // Roll forward to ensure votes are snapshotted
+        uint256 pieceId1 = createDefaultArtPiece();
 
         vm.startPrank(voter1);
         cultureIndex.vote(pieceId1);
         vm.stopPrank();
 
-        uint256 pieceId2 = createDefaultArtPiece();
-
         // Voter2 votes for piece2 with higher weight
         vm.startPrank(address(revolutionPointsEmitter));
         revolutionPoints.mint(voter2, 200);
-        vm.roll(block.number + 2); // Roll forward to ensure votes are snapshotted
+        vm.roll(vm.getBlockNumber() + 2); // Roll forward to ensure votes are snapshotted
+        uint256 pieceId2 = createDefaultArtPiece();
 
         vm.startPrank(voter2);
         cultureIndex.vote(pieceId2);
@@ -94,22 +97,27 @@ contract CultureIndexVotingBasicTest is CultureIndexTestSuite {
     }
 
     function testNoDoubleVotingAfterERC721Transfer() public {
-        // create 2 art pieces
-        createDefaultArtPiece();
-        uint256 artPieceId = createDefaultArtPiece();
+        vm.stopPrank();
         address voter = address(0x1);
         address recipient = address(0x2);
         uint256 tokenId = 0;
 
+        // create 2 art pieces
+        createDefaultArtPiece();
+
         // Mint an ERC721 token to the voter
         vm.startPrank(address(auction));
+        vm.roll(vm.getBlockNumber() + 1);
+
         revolutionToken.mint();
         revolutionToken.transferFrom(address(auction), voter, tokenId);
         assertEq(revolutionToken.ownerOf(tokenId), voter);
+        vm.roll(vm.getBlockNumber() + 2);
+
+        uint256 artPieceId = createDefaultArtPiece();
 
         // Voter casts a vote for the art piece
         vm.startPrank(voter);
-        vm.roll(block.number + 1);
         cultureIndex.vote(artPieceId);
         vm.stopPrank();
 
@@ -134,7 +142,6 @@ contract CultureIndexVotingBasicTest is CultureIndexTestSuite {
 
     /// @dev Tests reset of vote weight after transferring all tokens
     function testVoteWeightResetAfterTokenTransfer() public {
-        uint256 pieceId = createDefaultArtPiece();
         address voter = address(0x1);
         uint256 voteWeight = 100;
 
@@ -143,13 +150,15 @@ contract CultureIndexVotingBasicTest is CultureIndexTestSuite {
         vm.startPrank(address(revolutionPointsEmitter));
         revolutionPoints.mint(voter, voteWeight);
         vm.startPrank(voter);
-        vm.roll(block.number + 1);
+        vm.roll(vm.getBlockNumber() + 1);
+        uint256 pieceId = createDefaultArtPiece();
 
         cultureIndex.vote(pieceId);
         vm.stopPrank();
 
         vm.startPrank(address(revolutionPointsEmitter));
         revolutionPoints.mint(voter, voteWeight);
+        vm.roll(vm.getBlockNumber() + 2);
 
         vm.startPrank(address(auction));
         revolutionToken.mint(); // Mint an ERC721 token to the owner
@@ -158,9 +167,13 @@ contract CultureIndexVotingBasicTest is CultureIndexTestSuite {
         assertEq(revolutionToken.balanceOf(address(auction)), 1, "ERC721 token should be minted");
         // ensure cultureindex currentvotes is correct
         assertEq(
-            cultureIndex.getVotes(address(auction)),
+            cultureIndex.votingPower().getVotesWithWeights(
+                address(auction),
+                1,
+                cultureIndex.revolutionTokenVoteWeight()
+            ),
             cultureIndex.revolutionTokenVoteWeight(),
-            "Vote weight should be correct"
+            "Vote weight for voter should be correct"
         );
 
         // burn the 721
@@ -170,10 +183,22 @@ contract CultureIndexVotingBasicTest is CultureIndexTestSuite {
         assertEq(revolutionToken.balanceOf(address(auction)), 0, "ERC721 token should be burned");
 
         // ensure cultureindex currentvotes is correct
-        assertEq(cultureIndex.getVotes(address(auction)), 0, "Vote weight should be correct");
+        assertEq(
+            cultureIndex.votingPower().getVotesWithWeights(
+                address(auction),
+                1,
+                cultureIndex.revolutionTokenVoteWeight()
+            ),
+            0,
+            "Vote weight for auction should be zero"
+        );
 
         // ensure that the points token balance is reflected for voter
-        uint256 newWeight = cultureIndex.getVotes(voter);
+        uint256 newWeight = cultureIndex.votingPower().getVotesWithWeights(
+            voter,
+            1,
+            cultureIndex.revolutionTokenVoteWeight()
+        );
         assertEq(newWeight, voteWeight * 2, "Vote weight should reset to zero after transferring all tokens");
     }
 
@@ -186,7 +211,7 @@ contract CultureIndexVotingBasicTest is CultureIndexTestSuite {
         revolutionPoints.mint(voter, 100);
 
         vm.startPrank(voter);
-        vm.roll(block.number + 1);
+        vm.roll(vm.getBlockNumber() + 1);
         vm.expectRevert(abi.encodeWithSignature("INVALID_PIECE_ID()"));
         cultureIndex.vote(invalidPieceId);
         vm.stopPrank();
@@ -198,6 +223,7 @@ contract CultureIndexVotingBasicTest is CultureIndexTestSuite {
         createDefaultArtPiece();
         address voter = address(this);
         uint256 initialPointsWeight = 50;
+        vm.roll(vm.getBlockNumber() + 1);
 
         // Set initial token balances
         vm.stopPrank();
@@ -209,7 +235,11 @@ contract CultureIndexVotingBasicTest is CultureIndexTestSuite {
         //transfer to voter
         revolutionToken.transferFrom(address(auction), voter, 0);
 
-        uint256 initialWeight = cultureIndex.getVotes(voter);
+        uint256 initialWeight = cultureIndex.votingPower().getVotesWithWeights(
+            voter,
+            1,
+            cultureIndex.revolutionTokenVoteWeight()
+        );
         uint256 expectedInitialWeight = initialPointsWeight + (1 * cultureIndex.revolutionTokenVoteWeight());
         assertEq(initialWeight, expectedInitialWeight);
 
@@ -224,7 +254,11 @@ contract CultureIndexVotingBasicTest is CultureIndexTestSuite {
         // transfer to voter
         revolutionToken.transferFrom(address(auction), voter, 1);
 
-        uint256 updatedWeight = cultureIndex.getVotes(voter);
+        uint256 updatedWeight = cultureIndex.votingPower().getVotesWithWeights(
+            voter,
+            1,
+            cultureIndex.revolutionTokenVoteWeight()
+        );
         uint256 expectedUpdatedWeight = updatePointsWeight +
             initialPointsWeight +
             (2 * cultureIndex.revolutionTokenVoteWeight());
@@ -239,7 +273,7 @@ contract CultureIndexVotingBasicTest is CultureIndexTestSuite {
 
         // ensure cultureindex currentvotes is correct
         assertEq(
-            cultureIndex.getVotes(address(voter)),
+            cultureIndex.votingPower().getVotesWithWeights(address(voter), 1, cultureIndex.revolutionTokenVoteWeight()),
             updatePointsWeight + initialPointsWeight,
             "Vote weight should be correct"
         );
@@ -252,6 +286,13 @@ contract CultureIndexVotingBasicTest is CultureIndexTestSuite {
      * Then we validate the recorded vote and total voting weight.
      */
     function testVoting() public {
+        // Mint some tokens to the voter
+        vm.stopPrank();
+        vm.startPrank(address(revolutionPointsEmitter));
+        revolutionPoints.mint(address(this), 100);
+
+        vm.roll(vm.getBlockNumber() + 1); // Roll forward to ensure votes are snapshotted
+
         uint256 newPieceId = createArtPiece(
             "Mona Lisa",
             "A masterpiece",
@@ -262,13 +303,6 @@ contract CultureIndexVotingBasicTest is CultureIndexTestSuite {
             address(0x1),
             10000
         );
-
-        // Mint some tokens to the voter
-        vm.stopPrank();
-        vm.startPrank(address(revolutionPointsEmitter));
-        revolutionPoints.mint(address(this), 100);
-
-        vm.roll(block.number + 1); // Roll forward to ensure votes are snapshotted
 
         // Cast a vote
         vm.startPrank(address(this));
@@ -286,12 +320,14 @@ contract CultureIndexVotingBasicTest is CultureIndexTestSuite {
     function testBatchVotingSuccess() public {
         // Preconditions setup
         uint256[] memory pieceIds = new uint256[](2);
-        pieceIds[0] = createDefaultArtPiece();
-        pieceIds[1] = createDefaultArtPiece();
+
         vm.stopPrank();
         vm.startPrank(address(revolutionPointsEmitter));
         revolutionPoints.mint(address(this), 200);
-        vm.roll(block.number + 1); // Roll forward to ensure votes are snapshotted
+        vm.roll(vm.getBlockNumber() + 1); // Roll forward to ensure votes are snapshotted
+
+        pieceIds[0] = createDefaultArtPiece();
+        pieceIds[1] = createDefaultArtPiece();
 
         // Perform batch voting
         vm.startPrank(address(this));
@@ -308,11 +344,11 @@ contract CultureIndexVotingBasicTest is CultureIndexTestSuite {
     function testBatchVotingFailsForInvalidPieceIds() public {
         uint256[] memory pieceIds = new uint256[](2);
         pieceIds[0] = 999; // Invalid pieceId
-        pieceIds[1] = createDefaultArtPiece(); // Valid pieceId
         vm.stopPrank();
         vm.startPrank(address(revolutionPointsEmitter));
         revolutionPoints.mint(address(this), 200);
-        vm.roll(block.number + 1); // Roll forward to ensure votes are snapshotted
+        vm.roll(vm.getBlockNumber() + 1); // Roll forward to ensure votes are snapshotted
+        pieceIds[1] = createDefaultArtPiece(); // Valid pieceId
 
         // This should revert because one of the pieceIds is invalid
         vm.expectRevert(abi.encodeWithSignature("INVALID_PIECE_ID()"));
@@ -320,13 +356,14 @@ contract CultureIndexVotingBasicTest is CultureIndexTestSuite {
     }
 
     function testBatchVotingFailsIfAlreadyVoted() public {
-        uint256 pieceId = createDefaultArtPiece();
         vm.stopPrank();
         vm.startPrank(address(revolutionPointsEmitter));
         revolutionPoints.mint(address(this), 100);
-        vm.roll(block.number + 1); // Roll forward to ensure votes are snapshotted
+        vm.roll(vm.getBlockNumber() + 1); // Roll forward to ensure votes are snapshotted
 
         vm.startPrank(address(this));
+        uint256 pieceId = createDefaultArtPiece();
+
         cultureIndex.vote(pieceId); // Vote for the pieceId
 
         uint256[] memory pieceIds = new uint256[](1);
@@ -338,13 +375,19 @@ contract CultureIndexVotingBasicTest is CultureIndexTestSuite {
     }
 
     function testBatchVotingFailsIfPieceDropped() public {
-        uint256 pieceId = createDefaultArtPiece();
         vm.stopPrank();
         vm.startPrank(address(revolutionPointsEmitter));
         revolutionPoints.mint(address(this), 100);
-        vm.roll(block.number + 1); // Roll forward to ensure votes are snapshotted
+        vm.roll(vm.getBlockNumber() + 1); // Roll forward to ensure votes are snapshotted
+
+        uint256 pieceId = createDefaultArtPiece();
+        vm.startPrank(address(this));
+        //vote for the piece
+        cultureIndex.vote(pieceId);
 
         vm.startPrank(address(revolutionToken));
+        vm.roll(vm.getBlockNumber() + 2); // Roll forward to ensure votes are snapshotted
+
         cultureIndex.dropTopVotedPiece(); // Drop the piece
 
         uint256[] memory pieceIds = new uint256[](1);
@@ -358,7 +401,7 @@ contract CultureIndexVotingBasicTest is CultureIndexTestSuite {
     function testBatchVotingFailsForZeroWeight() public {
         uint256[] memory pieceIds = new uint256[](1);
         pieceIds[0] = createDefaultArtPiece();
-        vm.roll(block.number + 1); // Roll forward to ensure votes are snapshotted
+        vm.roll(vm.getBlockNumber() + 1); // Roll forward to ensure votes are snapshotted
         // Do not mint any tokens to ensure weight is zero
 
         // This should revert because the voter weight is zero
@@ -367,17 +410,17 @@ contract CultureIndexVotingBasicTest is CultureIndexTestSuite {
     }
 
     function testGasUsage() public {
+        // Mint enough tokens for voting
+        vm.stopPrank();
+        vm.startPrank(address(revolutionPointsEmitter));
+        revolutionPoints.mint(address(this), 100 * 100); // Mint enough tokens (e.g., 100 tokens per vote)
+        vm.roll(vm.getBlockNumber() + 1); // Roll forward to ensure votes are snapshotted
+
         // Assume createArtPiece() is a function that sets up an art piece and returns its ID
         uint256[] memory pieceIds = new uint256[](100);
         for (uint256 i = 0; i < 100; i++) {
             pieceIds[i] = createDefaultArtPiece(); // Setup each art piece
         }
-
-        // Mint enough tokens for voting
-        vm.stopPrank();
-        vm.startPrank(address(revolutionPointsEmitter));
-        revolutionPoints.mint(address(this), 100 * 100); // Mint enough tokens (e.g., 100 tokens per vote)
-        vm.roll(block.number + 1); // Roll forward to ensure votes are snapshotted
 
         vm.startPrank(address(this));
         // Measure gas for individual voting
@@ -392,20 +435,26 @@ contract CultureIndexVotingBasicTest is CultureIndexTestSuite {
         vm.stopPrank();
 
         setUp();
+
+        vm.stopPrank();
+        vm.startPrank(address(revolutionPointsEmitter));
+        revolutionPoints.mint(address(this), 100 * 100); // Mint enough tokens (e.g., 100 tokens per vote)
+        vm.roll(vm.getBlockNumber() + 2); // Roll forward to ensure votes are snapshotted
+        vm.stopPrank();
+
         // Resetting state for a fair comparison
         // Reset contract state (this would need to be implemented to revert to initial state)
         uint256[] memory batchPieceIds = new uint256[](100);
         for (uint256 i = 0; i < 100; i++) {
             batchPieceIds[i] = createDefaultArtPiece(); // Setup each art piece
         }
-        vm.stopPrank();
-        vm.startPrank(address(revolutionPointsEmitter));
-        revolutionPoints.mint(address(this), 100 * 100); // Mint enough tokens (e.g., 100 tokens per vote)
-        vm.roll(block.number + 1); // Roll forward to ensure votes are snapshotted
 
-        vm.startPrank(address(this));
         // Measure gas for batch voting
         uint256 startGasBatch = gasleft();
+
+        vm.stopPrank();
+        vm.startPrank(address(this));
+
         cultureIndex.voteForMany(batchPieceIds);
         uint256 gasUsedBatch = startGasBatch - gasleft();
         emit log_string("Gas used for batch votes");
@@ -426,6 +475,12 @@ contract CultureIndexVotingBasicTest is CultureIndexTestSuite {
      * Then we try to vote again and expect it to fail.
      */
     function testCannotVoteTwice() public {
+        // Mint some tokens to the voter
+        vm.stopPrank();
+        vm.startPrank(address(revolutionPointsEmitter));
+        revolutionPoints.mint(address(this), 100);
+        vm.roll(vm.getBlockNumber() + 1); // Roll forward to ensure votes are snapshotted
+
         uint256 newPieceId = createArtPiece(
             "Mona Lisa",
             "A masterpiece",
@@ -436,12 +491,6 @@ contract CultureIndexVotingBasicTest is CultureIndexTestSuite {
             address(0x1),
             10000
         );
-
-        // Mint some tokens to the voter
-        vm.stopPrank();
-        vm.startPrank(address(revolutionPointsEmitter));
-        revolutionPoints.mint(address(this), 100);
-        vm.roll(block.number + 1); // Roll forward to ensure votes are snapshotted
 
         // Cast a vote
         vm.startPrank(address(this));
@@ -470,7 +519,7 @@ contract CultureIndexVotingBasicTest is CultureIndexTestSuite {
             10000
         );
 
-        vm.roll(block.number + 1); // Roll forward to ensure votes are snapshotted
+        vm.roll(vm.getBlockNumber() + 1); // Roll forward to ensure votes are snapshotted
 
         // Try to vote and expect to fail
         vm.expectRevert(abi.encodeWithSignature("WEIGHT_TOO_LOW()"));
@@ -484,6 +533,12 @@ contract CultureIndexVotingBasicTest is CultureIndexTestSuite {
      * Then we try to vote again for both and expect both to fail.
      */
     function testCannotVoteOnMultiplePiecesTwice() public {
+        // Mint some tokens to the voter
+        vm.stopPrank();
+        vm.startPrank(address(revolutionPointsEmitter));
+        revolutionPoints.mint(address(this), 200);
+        vm.roll(vm.getBlockNumber() + 1); // Roll forward to ensure votes are snapshotted
+
         uint256 firstPieceId = createArtPiece(
             "Mona Lisa",
             "A masterpiece",
@@ -505,12 +560,6 @@ contract CultureIndexVotingBasicTest is CultureIndexTestSuite {
             address(0x2),
             10000
         );
-
-        // Mint some tokens to the voter
-        vm.stopPrank();
-        vm.startPrank(address(revolutionPointsEmitter));
-        revolutionPoints.mint(address(this), 200);
-        vm.roll(block.number + 1); // Roll forward to ensure votes are snapshotted
 
         // Cast a vote for the first piece
 
@@ -557,7 +606,7 @@ contract CultureIndexVotingBasicTest is CultureIndexTestSuite {
             address(0x2),
             10000
         );
-        vm.roll(block.number + 1); // Roll forward to ensure votes are snapshotted
+        vm.roll(vm.getBlockNumber() + 1); // Roll forward to ensure votes are snapshotted
 
         // Try to vote for the first piece and expect to fail
         vm.expectRevert(abi.encodeWithSignature("WEIGHT_TOO_LOW()"));
@@ -569,13 +618,13 @@ contract CultureIndexVotingBasicTest is CultureIndexTestSuite {
     }
 
     function testVoteAfterTransferringTokens() public {
-        uint256 newPieceId = createDefaultArtPiece();
-
         // Mint tokens and vote
         vm.stopPrank();
         vm.startPrank(address(revolutionPointsEmitter));
         revolutionPoints.mint(address(this), 100);
-        vm.roll(block.number + 1); // Roll forward to ensure votes are snapshotted
+        vm.roll(vm.getBlockNumber() + 1); // Roll forward to ensure votes are snapshotted
+
+        uint256 newPieceId = createDefaultArtPiece();
 
         vm.startPrank(address(this));
         cultureIndex.vote(newPieceId);
@@ -597,7 +646,7 @@ contract CultureIndexVotingBasicTest is CultureIndexTestSuite {
         vm.stopPrank();
         vm.startPrank(address(revolutionPointsEmitter));
         revolutionPoints.mint(address(this), 100);
-        vm.roll(block.number + 1); // Roll forward to ensure votes are snapshotted
+        vm.roll(vm.getBlockNumber() + 1); // Roll forward to ensure votes are snapshotted
 
         vm.startPrank(address(this));
         // Attempt to vote for an invalid piece ID
@@ -612,17 +661,30 @@ contract CultureIndexVotingBasicTest is CultureIndexTestSuite {
      * We expect the vote to fail since the piece has been dropped.
      */
     function testCannotVoteOnDroppedPiece() public {
-        uint256 newPieceId = createDefaultArtPiece();
-        vm.stopPrank();
-        vm.startPrank(address(revolutionPointsEmitter));
         vm.stopPrank();
         vm.startPrank(address(revolutionPointsEmitter));
         revolutionPoints.mint(address(this), 100);
-        vm.roll(block.number + 1); // Roll forward to ensure votes are snapshotted
+        vm.roll(vm.getBlockNumber() + 1); // Roll forward to ensure votes are snapshotted
+
+        uint256 newPieceId = createDefaultArtPiece();
+
+        vm.roll(vm.getBlockNumber() + 2); // Roll forward to ensure votes are snapshotted
+
+        //prank this
+        vm.startPrank(address(this));
+        cultureIndex.vote(newPieceId);
 
         // Drop the top-voted piece (which should be the new piece)
         vm.startPrank(address(revolutionToken));
+        //vote for the piece
         cultureIndex.dropTopVotedPiece();
+
+        //mint to new address
+        vm.startPrank(address(revolutionPointsEmitter));
+        revolutionPoints.mint(address(auction), 100);
+
+        //prank auction
+        vm.startPrank(address(auction));
 
         // Try to vote for the dropped piece and expect to fail
         vm.expectRevert(abi.encodeWithSignature("ALREADY_DROPPED()"));
@@ -636,24 +698,30 @@ contract CultureIndexVotingBasicTest is CultureIndexTestSuite {
         vm.startPrank(address(revolutionPointsEmitter));
         revolutionPoints.mint(address(auction), pointsBalance);
 
+        vm.roll(vm.getBlockNumber() + 1);
+
         vm.startPrank(address(this));
 
         // Create art pieces and drop them
         for (uint256 i; i < erc721Balance; i++) {
             createDefaultArtPiece();
-            vm.roll(block.number + (i + 1) * 2);
+            vm.roll(vm.getBlockNumber() + (i + 1) * 2);
             vm.startPrank(address(auction));
             cultureIndex.vote(i);
             revolutionToken.mint();
         }
 
-        vm.roll(block.number + 3);
+        vm.roll(vm.getBlockNumber() + 3);
 
         // Calculate expected vote weight
         uint256 expectedVoteWeight = pointsBalance + (erc721Balance * cultureIndex.revolutionTokenVoteWeight());
 
         // Get the actual vote weight from the contract
-        uint256 actualVoteWeight = cultureIndex.getVotes(address(auction));
+        uint256 actualVoteWeight = cultureIndex.votingPower().getVotesWithWeights(
+            address(auction),
+            1,
+            cultureIndex.revolutionTokenVoteWeight()
+        );
 
         // Assert that the actual vote weight matches the expected value
         assertEq(actualVoteWeight, expectedVoteWeight, "Vote weight calculation does not match expected value");
@@ -672,12 +740,12 @@ contract CultureIndexVotingBasicTest is CultureIndexTestSuite {
         vm.startPrank(address(revolutionPointsEmitter));
         revolutionPoints.mint(address(this), pointsTotalSupply);
 
-        vm.roll(block.number + 1);
+        vm.roll(vm.getBlockNumber() + 1);
 
-        //for desired erc721 supply, loop create art pieces and drop them
+        //for desired erc721 supply, loop create art pieces and drop
         for (uint256 i = 0; i < erc721TotalSupply; i++) {
             createDefaultArtPiece();
-            vm.roll(block.number + 1);
+            vm.roll(vm.getBlockNumber() + 1);
             vm.startPrank(address(this));
             cultureIndex.vote(i);
 

@@ -2,9 +2,8 @@
 pragma solidity 0.8.22;
 
 import { ICultureIndex } from "../../interfaces/ICultureIndex.sol";
+import { IRevolutionVotingPower } from "../../interfaces/IRevolutionVotingPower.sol";
 import { MaxHeap } from "../MaxHeap.sol";
-import { ERC20VotesUpgradeable } from "../../base/erc20/ERC20VotesUpgradeable.sol";
-import { ERC721CheckpointableUpgradeable } from "../../base/ERC721CheckpointableUpgradeable.sol";
 
 /// @notice CultureIndex Storage V1
 /// @author rocketman
@@ -16,11 +15,8 @@ contract CultureIndexStorageV1 {
     // The MaxHeap data structure used to keep track of the top-voted piece
     MaxHeap public maxHeap;
 
-    // The ERC20 token used for voting
-    ERC20VotesUpgradeable public revolutionPoints;
-
-    // The ERC721 token used for voting
-    ERC721CheckpointableUpgradeable public revolutionToken;
+    // The RevolutionVotingPower contract used to get the voting power of an account
+    IRevolutionVotingPower public votingPower;
 
     /// @notice The minimum vote weight required in order to vote
     uint256 public minVoteWeight;

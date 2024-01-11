@@ -10,8 +10,15 @@ struct RewardsSettings {
     uint256 revolutionReward;
 }
 
+interface IRewardSplits {
+    /// @dev from RewardSplits
+    function minPurchaseAmount() external view returns (uint256);
+
+    function maxPurchaseAmount() external view returns (uint256);
+}
+
 /// @notice Common logic for Revolution RevolutionPointsEmitter contracts for protocol reward splits & deposits
-abstract contract RewardSplits {
+abstract contract RewardSplits is IRewardSplits {
     error INVALID_ETH_AMOUNT();
 
     // 2.5% total
@@ -34,21 +41,16 @@ abstract contract RewardSplits {
     }
 
     /*
-     * @notice Sometimes has rounding errors vs. compute purchase rewards, use externally.
      * @param _paymentAmountWei The amount of ETH being paid for the purchase
      */
     function computeTotalReward(uint256 paymentAmountWei) public pure returns (uint256) {
         if (paymentAmountWei <= minPurchaseAmount || paymentAmountWei >= maxPurchaseAmount) revert INVALID_ETH_AMOUNT();
 
         return
-            (paymentAmountWei * BUILDER_REWARD_BPS) /
-            10_000 +
-            (paymentAmountWei * PURCHASE_REFERRAL_BPS) /
-            10_000 +
-            (paymentAmountWei * DEPLOYER_REWARD_BPS) /
-            10_000 +
-            (paymentAmountWei * REVOLUTION_REWARD_BPS) /
-            10_000;
+            ((paymentAmountWei * BUILDER_REWARD_BPS) / 10_000) +
+            ((paymentAmountWei * PURCHASE_REFERRAL_BPS) / 10_000) +
+            ((paymentAmountWei * DEPLOYER_REWARD_BPS) / 10_000) +
+            ((paymentAmountWei * REVOLUTION_REWARD_BPS) / 10_000);
     }
 
     function computePurchaseRewards(uint256 paymentAmountWei) public pure returns (RewardsSettings memory, uint256) {

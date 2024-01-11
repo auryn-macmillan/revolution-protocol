@@ -8,14 +8,16 @@ import { CultureIndexTestSuite } from "./CultureIndex.t.sol";
 
 contract CultureIndexVotingTestManager is CultureIndexTestSuite {
     function testVotingWithDifferentWeights() public {
-        uint256 newPieceId = voter1Test.createDefaultArtPiece();
+        vm.stopPrank();
 
         // Mint tokens to the test contracts (acting as voters)
         vm.startPrank(address(revolutionPointsEmitter));
         revolutionPoints.mint(address(voter1Test), 100);
         revolutionPoints.mint(address(voter2Test), 200);
 
-        vm.roll(block.number + 1); // advance block for vote snapshotting
+        vm.roll(vm.getBlockNumber() + 1); // advance block for vote snapshotting
+
+        uint256 newPieceId = voter1Test.createDefaultArtPiece();
 
         // Call vote from both test instances
         voter1Test.voteForPiece(newPieceId);
@@ -35,13 +37,14 @@ contract CultureIndexVotingTestManager is CultureIndexTestSuite {
     }
 
     function testVoteOnMultiplePieces() public {
-        uint256 firstPieceId = voter1Test.createDefaultArtPiece();
-        uint256 secondPieceId = voter2Test.createDefaultArtPiece();
-
+        vm.stopPrank();
         // Mint tokens to a test contract (acting as a voter)
         vm.startPrank(address(revolutionPointsEmitter));
         revolutionPoints.mint(address(voter1Test), 100);
-        vm.roll(block.number + 1); // advance block for vote snapshotting
+        vm.roll(vm.getBlockNumber() + 1); // advance block for vote snapshotting
+
+        uint256 firstPieceId = voter1Test.createDefaultArtPiece();
+        uint256 secondPieceId = voter2Test.createDefaultArtPiece();
 
         // Call vote from the same test instance for both pieces
         voter1Test.voteForPiece(firstPieceId);

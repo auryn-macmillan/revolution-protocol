@@ -15,6 +15,31 @@ contract MaxHeapUpdateTestSuite is MaxHeapTestSuite {
         assertEq(value, 15, "Value should be 15 after initial insert");
     }
 
+    //from the audit
+    function testExtractUpdateError() public {
+        // Insert 3 items with value 20 and remove them all
+        maxHeapTester.insert(1, 20);
+        maxHeapTester.insert(2, 20);
+        maxHeapTester.insert(3, 20);
+
+        maxHeapTester.extractMax();
+        maxHeapTester.extractMax();
+        maxHeapTester.extractMax(); // Because all of 3 items are removed, itemId=1,2,3 should never be extracted after.
+
+        // Insert 2 items with value 10 which is small than 20
+        maxHeapTester.insert(4, 10);
+        maxHeapTester.insert(5, 21);
+        // Update value to cause maxHeapify
+        maxHeapTester.updateValue(4, 5);
+
+        // Now the item should be itemId=5, value=10
+        // But in fact the max item is itemId=3, value=20 now.
+        (uint256 itemId, uint256 value) = maxHeapTester.extractMax(); // itemId=3 will be extracted again
+
+        require(itemId == 5, "Item ID should be 5");
+        require(value == 21, "value should be 21");
+    }
+
     function testUpdateValueIncrease() public {
         maxHeapTester.insert(1, 10);
         maxHeapTester.insert(2, 5);

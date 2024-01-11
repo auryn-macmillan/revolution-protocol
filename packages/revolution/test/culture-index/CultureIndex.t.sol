@@ -34,7 +34,7 @@ contract CultureIndexTestSuite is RevolutionBuilderTest {
         super.deployMock();
 
         //start prank to be cultureindex's owner
-        vm.startPrank(address(dao));
+        vm.startPrank(address(executor));
 
         // // Create new test instances acting as different voters
         voter1Test = new CultureIndexVotingTest(address(cultureIndex), address(revolutionPoints));

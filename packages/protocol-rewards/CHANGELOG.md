@@ -1,5 +1,11 @@
 # @collectivexyz/protocol-rewards
 
+## 0.10.0
+
+### Minor Changes
+
+- 0398ceb: first round of audit fixes, adds DAO proxy contract and uses new VRGDA logic
+
 ## 0.2.0
 
 ### Minor Changes

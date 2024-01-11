@@ -30,6 +30,7 @@
 
 import { IDAOExecutor } from "../interfaces/IDAOExecutor.sol";
 import { IRevolutionBuilder } from "../interfaces/IRevolutionBuilder.sol";
+import { IRevolutionVotingPower } from "../interfaces/IRevolutionVotingPower.sol";
 
 pragma solidity 0.8.22;
 
@@ -155,11 +156,8 @@ contract RevolutionDAOStorageV1 is RevolutionDAOProxyStorage {
     /// @dev Reverts if the provided executor address is invalid (zero address).
     error INVALID_EXECUTOR_ADDRESS();
 
-    /// @dev Reverts if the provided ERC721 token address is invalid (zero address).
-    error INVALID_ERC721_ADDRESS();
-
-    /// @dev Reverts if the provided ERC20 token address is invalid (zero address).
-    error INVALID_ERC20_ADDRESS();
+    /// @dev Reverts if the provided RevolutionVotingPower address is invalid (zero address).
+    error INVALID_VOTINGPOWER_ADDRESS();
 
     /// @dev Reverts if the voting period is outside the allowed range.
     error INVALID_VOTING_PERIOD();
@@ -169,9 +167,6 @@ contract RevolutionDAOStorageV1 is RevolutionDAOProxyStorage {
 
     /// @dev Reverts if the proposal threshold basis points are outside the allowed range.
     error INVALID_PROPOSAL_THRESHOLD_BPS();
-
-    /// @dev Reverts if the ERC721 token voting weight is invalid (non-positive).
-    error INVALID_ERC721_VOTING_WEIGHT();
 
     /// @dev Reverts if the proposer's votes are below the proposal threshold.
     error PROPOSER_VOTES_BELOW_THRESHOLD();
@@ -285,11 +280,8 @@ contract RevolutionDAOStorageV1 is RevolutionDAOProxyStorage {
     /// @notice The address of the Revolution DAO Executor DAOExecutor
     IDAOExecutor public timelock;
 
-    /// @notice The address of the Revolution ERC721 tokens
-    RevolutionTokenLike public revolutionToken;
-
-    /// @notice The address of the Revolution ERC20 points
-    PointsLike public revolutionPoints;
+    /// @notice The RevolutionVotingPower contract
+    IRevolutionVotingPower public votingPower;
 
     /// @notice The official record of all proposals ever proposed
     mapping(uint256 => Proposal) internal _proposals;
@@ -301,9 +293,6 @@ contract RevolutionDAOStorageV1 is RevolutionDAOProxyStorage {
 
     /// @notice Pending new vetoer
     address public pendingVetoer;
-
-    /// @notice The voting weight of the revolution token eg: owning (2) tokens gets you (2 * tokenVotingWeight) votes
-    uint256 public revolutionTokenVoteWeight;
 
     ///                                                          ///
     ///                        CONSTANTS                         ///

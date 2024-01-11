@@ -19,17 +19,18 @@ import { RevolutionTokenTestSuite } from "./RevolutionToken.t.sol";
 /// @dev The test suite for the RevolutionToken contract
 contract TokenMintingTest is RevolutionTokenTestSuite {
     /// @dev Ensures the dropped art piece is equivalent to the top-voted piece
-    function testDroppedArtPieceMatchesTopVoted() public {
+    function test_DroppedArtPieceMatchesTopVoted() public {
         vm.stopPrank();
 
         vm.startPrank(address(revolutionPointsEmitter));
         revolutionPoints.mint(address(this), 10);
 
+        // ensure vote snapshot is taken
+        vm.roll(vm.getBlockNumber() + 1);
+
         // Create a new art piece and simulate it being the top voted piece
         uint256 pieceId = createDefaultArtPiece();
-
-        // ensure vote snapshot is taken
-        vm.roll(block.number + 1);
+        vm.roll(vm.getBlockNumber() + 2);
 
         vm.startPrank(address(this));
         cultureIndex.vote(pieceId); // Simulate voting for the piece to make it top-voted
@@ -94,7 +95,7 @@ contract TokenMintingTest is RevolutionTokenTestSuite {
         vm.startPrank(address(auction));
 
         // Try to remove max and expect to fail
-        vm.expectRevert(abi.encodeWithSignature("CULTURE_INDEX_EMPTY()"));
+        vm.expectRevert("dropTopVotedPiece failed");
         revolutionToken.mint();
     }
 
@@ -104,6 +105,7 @@ contract TokenMintingTest is RevolutionTokenTestSuite {
         vm.startPrank(address(auction));
         // Add a piece to the CultureIndex
         createDefaultArtPiece();
+        vm.roll(vm.getBlockNumber() + 1);
 
         // Mint a token
         uint256 tokenId = revolutionToken.mint();
@@ -122,6 +124,8 @@ contract TokenMintingTest is RevolutionTokenTestSuite {
         uint256 initialTotalSupply = revolutionToken.totalSupply();
         vm.stopPrank();
         vm.startPrank(address(auction));
+        vm.roll(vm.getBlockNumber() + 1);
+
         uint256 newTokenId = revolutionToken.mint();
         assertEq(revolutionToken.totalSupply(), initialTotalSupply + 1, "One new token should have been minted");
         assertEq(
@@ -134,6 +138,7 @@ contract TokenMintingTest is RevolutionTokenTestSuite {
     /// @dev Tests burning a verb token
     function testBurn() public {
         createDefaultArtPiece();
+        vm.roll(vm.getBlockNumber() + 1);
 
         vm.stopPrank();
         vm.startPrank(address(auction));
@@ -146,7 +151,7 @@ contract TokenMintingTest is RevolutionTokenTestSuite {
     }
 
     /// @dev Ensures _currentVerbId increments correctly after each mint
-    function testMintingIncrement(uint200 voteWeight) public {
+    function test_MintingIncrement(uint200 voteWeight) public {
         vm.assume(voteWeight < type(uint200).max / 2);
         vm.stopPrank();
         vm.startPrank(address(revolutionPointsEmitter));
@@ -154,11 +159,12 @@ contract TokenMintingTest is RevolutionTokenTestSuite {
 
         revolutionPoints.mint(address(this), voteWeight);
 
+        // ensure vote snapshot is taken
+        vm.roll(vm.getBlockNumber() + 1);
+
         uint256 pieceId1 = createDefaultArtPiece();
         uint256 pieceId2 = createDefaultArtPiece();
-
-        // ensure vote snapshot is taken
-        vm.roll(block.number + 1);
+        vm.roll(vm.getBlockNumber() + 2);
 
         vm.startPrank(address(this));
         if (voteWeight == 0) vm.expectRevert(abi.encodeWithSignature("WEIGHT_TOO_LOW()"));
@@ -166,7 +172,7 @@ contract TokenMintingTest is RevolutionTokenTestSuite {
 
         uint256 expectedQuorum = ((10_000 + voteWeight) * cultureIndex.quorumVotesBPS()) / 10_000;
 
-        bool shouldRevertMint = voteWeight <= expectedQuorum;
+        bool shouldRevertMint = voteWeight < expectedQuorum;
 
         vm.startPrank(address(auction));
         if (shouldRevertMint) vm.expectRevert("dropTopVotedPiece failed");
@@ -188,24 +194,19 @@ contract TokenMintingTest is RevolutionTokenTestSuite {
     /// @dev Checks if the VerbCreated event is emitted with correct parameters on minting
     function testMintingEvent() public {
         createDefaultArtPiece();
+        vm.roll(vm.getBlockNumber() + 1);
 
-        (uint256 pieceId, ICultureIndex.ArtPieceMetadata memory metadata, , , , , , ) = cultureIndex.pieces(0);
+        (uint256 pieceId, ICultureIndex.ArtPieceMetadata memory metadata, , , ) = cultureIndex.pieces(0);
 
         emit log_uint(pieceId);
 
         ICultureIndex.CreatorBps[] memory creators = new ICultureIndex.CreatorBps[](1);
         creators[0] = ICultureIndex.CreatorBps({ creator: address(0x1), bps: 10000 });
 
-        ICultureIndex.ArtPiece memory expectedArtPiece = ICultureIndex.ArtPiece({
+        ICultureIndex.ArtPieceCondensed memory expectedArtPiece = ICultureIndex.ArtPieceCondensed({
             pieceId: 0,
-            metadata: metadata,
             creators: creators,
-            sponsor: address(dao),
-            isDropped: true,
-            creationBlock: block.number,
-            quorumVotes: 0,
-            totalPointsSupply: 0,
-            totalVotesSupply: 0
+            sponsor: address(executor)
         });
 
         vm.stopPrank();
@@ -224,6 +225,8 @@ contract TokenMintingTest is RevolutionTokenTestSuite {
         vm.startPrank(address(auction));
         //create piece
         createDefaultArtPiece();
+        vm.roll(vm.getBlockNumber() + 1);
+
         uint256 tokenId = revolutionToken.mint();
 
         vm.expectEmit(true, true, true, true);
@@ -239,8 +242,10 @@ contract TokenMintingTest is RevolutionTokenTestSuite {
         vm.stopPrank();
         vm.startPrank(address(auction));
         uint256 artPieceId = createDefaultArtPiece();
+        vm.roll(vm.getBlockNumber() + 1);
+
         uint256 tokenId = revolutionToken.mint();
-        (, ICultureIndex.ArtPieceMetadata memory metadata, , , , , , ) = cultureIndex.pieces(artPieceId);
+        (, ICultureIndex.ArtPieceMetadata memory metadata, , , ) = cultureIndex.pieces(artPieceId);
         // Assuming the descriptor returns a fixed URI for the given tokenId
         string memory expectedTokenURI = descriptor.tokenURI(tokenId, metadata);
         assertEq(
@@ -251,25 +256,28 @@ contract TokenMintingTest is RevolutionTokenTestSuite {
     }
 
     /// @dev Ensures minting fetches and associates the top-voted piece from CultureIndex
-    function testTopVotedPieceMinting() public {
-        // Create a new piece and simulate it being the top voted piece
-        uint256 pieceId = createDefaultArtPiece(); // This function should exist within the test contract
-
+    function test_TopVotedPieceMinting() public {
+        vm.stopPrank();
         vm.startPrank(address(revolutionPointsEmitter));
         revolutionPoints.mint(address(this), 10);
 
         // ensure vote snapshot is taken
-        vm.roll(block.number + 1);
+        vm.roll(vm.getBlockNumber() + 1);
+
+        // Create a new piece and simulate it being the top voted piece
+        uint256 pieceId = createDefaultArtPiece(); // This function should exist within the test contract
 
         vm.startPrank(address(this));
         cultureIndex.vote(pieceId); // Assuming vote function exists and we cast 10 votes
 
         // Mint a token
         vm.startPrank(address(auction));
+        // fast forward to the next block
+        vm.roll(vm.getBlockNumber() + 2);
         uint256 tokenId = revolutionToken.mint();
 
         // Validate the token is associated with the top voted piece
-        (uint256 mintedPieceId, , , , , , , ) = revolutionToken.artPieces(tokenId);
+        uint256 mintedPieceId = revolutionToken.artPieces(tokenId);
         assertEq(mintedPieceId, pieceId, "Minted token should be associated with the top voted piece");
     }
 }

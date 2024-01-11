@@ -75,6 +75,7 @@ contract TokenSecurityTest is RevolutionTokenTestSuite {
         vm.startPrank(address(auction));
 
         createDefaultArtPiece();
+        vm.roll(vm.getBlockNumber() + 1);
 
         uint256 tokenId = revolutionToken.mint();
 
@@ -177,7 +178,7 @@ contract TokenSecurityTest is RevolutionTokenTestSuite {
         vm.expectEmit(true, true, true, true);
         emit ICultureIndexEvents.PieceCreated(
             0,
-            address(dao),
+            address(executor),
             ICultureIndex.ArtPieceMetadata({
                 name: "Mona Lisa",
                 description: "A masterpiece",
@@ -186,8 +187,6 @@ contract TokenSecurityTest is RevolutionTokenTestSuite {
                 text: "",
                 mediaType: ICultureIndex.MediaType.IMAGE
             }),
-            0,
-            0,
             creators
         );
 
@@ -198,9 +197,13 @@ contract TokenSecurityTest is RevolutionTokenTestSuite {
         bool reverted = false;
 
         // Create an art piece with the maximum allowed number of creators
-        ICultureIndex.CreatorBps[] memory creators = new ICultureIndex.CreatorBps[](100);
+        ICultureIndex.CreatorBps[] memory creators = new ICultureIndex.CreatorBps[](cultureIndex.MAX_NUM_CREATORS());
+
         for (uint256 i = 0; i < creators.length; i++) {
-            creators[i] = ICultureIndex.CreatorBps({ creator: address(uint160(i + 1)), bps: 100 });
+            creators[i] = ICultureIndex.CreatorBps({
+                creator: address(uint160(i + 1)),
+                bps: 10_000 / cultureIndex.MAX_NUM_CREATORS()
+            });
         }
 
         try cultureIndex.createPiece(createDefaultMetadata(), creators) {
@@ -216,6 +219,7 @@ contract TokenSecurityTest is RevolutionTokenTestSuite {
     function testMintToDropTopVotedPieceFailure() public {
         // Create a default art piece to have something to mint
         createDefaultArtPiece();
+        vm.roll(vm.getBlockNumber() + 1);
 
         // Mock the CultureIndex to simulate dropTopVotedPiece failure
         address cultureIndexMock = address(new CultureIndexMock());

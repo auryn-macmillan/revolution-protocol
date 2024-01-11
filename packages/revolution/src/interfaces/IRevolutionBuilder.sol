@@ -22,7 +22,8 @@ interface IRevolutionBuilder is IUUPS {
     /// @param revolutionPointsEmitter The RevolutionPointsEmitter address
     /// @param revolutionPoints The dao address
     /// @param maxHeap The maxHeap address
-    event DAODeployed(
+    /// @param revolutionVotingPower The revolutionVotingPower address
+    event RevolutionDeployed(
         address revolutionToken,
         address descriptor,
         address auction,
@@ -31,7 +32,8 @@ interface IRevolutionBuilder is IUUPS {
         address cultureIndex,
         address revolutionPointsEmitter,
         address revolutionPoints,
-        address maxHeap
+        address maxHeap,
+        address revolutionVotingPower
     );
 
     /// @notice Emitted when an upgrade is registered by the Builder DAO
@@ -59,6 +61,7 @@ interface IRevolutionBuilder is IUUPS {
         string revolutionPoints;
         string revolutionPointsEmitter;
         string maxHeap;
+        string revolutionVotingPower;
     }
 
     /// @notice The ERC-721 token parameters
@@ -96,7 +99,6 @@ interface IRevolutionBuilder is IUUPS {
     /// @param votingPeriod The time period to vote on a proposal
     /// @param proposalThresholdBPS The basis points of the token supply required to create a proposal
     /// @param vetoer The address authorized to veto proposals (address(0) if none desired)
-    /// @param revolutionTokenVoteWeight The voting weight of the individual Revolution tokens, normally a large multiple of 1e18 eg: (100 * 1e18) to match up with daily emission of ERC20 points (which normally have 18 decimals)
     /// @param daoName The name of the DAO
     /// @param dynamicQuorumParams The dynamic quorum parameters
     struct GovParams {
@@ -105,7 +107,6 @@ interface IRevolutionBuilder is IUUPS {
         uint256 votingPeriod;
         uint256 proposalThresholdBPS;
         address vetoer;
-        uint256 revolutionTokenVoteWeight;
         string daoName;
         RevolutionDAOStorageV1.DynamicQuorumParams dynamicQuorumParams;
     }
@@ -113,7 +114,7 @@ interface IRevolutionBuilder is IUUPS {
     /// @notice The RevolutionPoints ERC-20 token parameters
     /// @param name The token name
     /// @param symbol The token symbol
-    struct PointsParams {
+    struct PointsTokenParams {
         string name;
         string symbol;
     }
@@ -125,6 +126,14 @@ interface IRevolutionBuilder is IUUPS {
         VRGDAParams vrgdaParams;
         PointsEmitterCreatorParams creatorParams;
         address creatorsAddress;
+    }
+
+    /// @notice The RevolutionPoints ERC-20 params
+    /// @param tokenParams // The token parameters
+    /// @param emitterParams // The emitter parameters
+    struct RevolutionPointsParams {
+        PointsTokenParams tokenParams;
+        PointsEmitterParams emitterParams;
     }
 
     /// @notice The ERC-20 points emitter VRGDA parameters
@@ -159,6 +168,14 @@ interface IRevolutionBuilder is IUUPS {
         uint256 minVoteWeight;
     }
 
+    /// @notice The RevolutionVotingPower parameters
+    /// @param revolutionTokenVoteWeight The voting weight of the individual Revolution ERC721 tokens. Normally a large multiple to match up with daily emission of ERC20 points to match up with daily emission of ERC20 points (which normally have 18 decimals)
+    /// @param revolutionPointsVoteWeight The voting weight of the individual Revolution ERC20 points tokens. (usually 1 because of 18 decimals on the ERC20 contract)
+    struct RevolutionVotingPowerParams {
+        uint256 revolutionTokenVoteWeight;
+        uint256 revolutionPointsVoteWeight;
+    }
+
     ///                                                          ///
     ///                           FUNCTIONS                      ///
     ///                                                          ///
@@ -190,6 +207,9 @@ interface IRevolutionBuilder is IUUPS {
     /// @notice The maxHeap implementation address
     function maxHeapImpl() external view returns (address);
 
+    /// @notice The revolutionVotingPower implementation address
+    function revolutionVotingPowerImpl() external view returns (address);
+
     /// @notice Deploys a DAO with custom token, auction, and governance settings
     /// @param initialOwner The initial owner address
     /// @param weth The WETH address
@@ -197,8 +217,8 @@ interface IRevolutionBuilder is IUUPS {
     /// @param auctionParams The auction settings
     /// @param govParams The governance settings
     /// @param cultureIndexParams The CultureIndex settings
-    /// @param pointsParams The RevolutionPoints token settings
-    /// @param pointsEmitterParams The RevolutionPoints emitter settings
+    /// @param revolutionPointsParams The RevolutionPoints settings
+    /// @param revolutionVotingPowerParams The RevolutionVotingPower settings
     function deploy(
         address initialOwner,
         address weth,
@@ -206,8 +226,8 @@ interface IRevolutionBuilder is IUUPS {
         AuctionParams calldata auctionParams,
         GovParams calldata govParams,
         CultureIndexParams calldata cultureIndexParams,
-        PointsParams calldata pointsParams,
-        PointsEmitterParams calldata pointsEmitterParams
+        RevolutionPointsParams calldata revolutionPointsParams,
+        RevolutionVotingPowerParams calldata revolutionVotingPowerParams
     ) external returns (RevolutionBuilderTypesV1.DAOAddresses memory);
 
     /// @notice A DAO's remaining contract addresses from its token address
@@ -225,7 +245,8 @@ interface IRevolutionBuilder is IUUPS {
             address cultureIndex,
             address revolutionPoints,
             address revolutionPointsEmitter,
-            address maxHeap
+            address maxHeap,
+            address revolutionVotingPower
         );
 
     /// @notice If an implementation is registered by the Builder DAO as an optional upgrade

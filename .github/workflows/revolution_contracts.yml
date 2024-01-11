@@ -21,6 +21,7 @@ jobs:
       package_folder: packages/revolution
 
   contract_sizes:
+    if: github.ref == 'refs/heads/main'
     needs: build
     uses: ./.github/workflows/contract_sizes.yml
     with:

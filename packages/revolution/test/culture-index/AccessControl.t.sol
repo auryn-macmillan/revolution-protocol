@@ -22,7 +22,6 @@ contract CultureIndexAccessControlTest is CultureIndexTestSuite {
         vm.assume(newQuorumBPS <= cultureIndex.MAX_QUORUM_VOTES_BPS());
 
         // Set new quorum BPS by owner
-        vm.startPrank(address(dao));
         cultureIndex._setQuorumVotesBPS(newQuorumBPS);
         vm.stopPrank();
 
@@ -36,7 +35,6 @@ contract CultureIndexAccessControlTest is CultureIndexTestSuite {
         vm.assume(newQuorumBPS > cultureIndex.MAX_QUORUM_VOTES_BPS());
 
         // Set new quorum BPS by owner
-        vm.startPrank(address(dao));
         vm.expectRevert(abi.encodeWithSignature("INVALID_QUORUM_BPS()"));
         cultureIndex._setQuorumVotesBPS(newQuorumBPS);
         vm.stopPrank();
@@ -61,7 +59,6 @@ contract CultureIndexAccessControlTest is CultureIndexTestSuite {
         vm.assume(quorumBps > 200 && quorumBps <= cultureIndex.MAX_QUORUM_VOTES_BPS());
 
         // Set quorum BPS
-        vm.startPrank(address(dao));
         cultureIndex._setQuorumVotesBPS(quorumBps);
         vm.stopPrank();
 
@@ -69,10 +66,12 @@ contract CultureIndexAccessControlTest is CultureIndexTestSuite {
         revolutionPoints.mint(address(0x21), quorumBps * 10);
         revolutionPoints.mint(address(this), ((quorumBps / 2) * (quorumBps)) / 10_000);
 
+        vm.roll(vm.getBlockNumber() + 2);
+
         // Create an art piece
         uint256 pieceId = createDefaultArtPiece();
 
-        vm.roll(block.number + 2);
+        vm.roll(vm.getBlockNumber() + 2);
 
         // Vote for the piece, but do not meet the quorum
         vm.startPrank(address(this));
@@ -92,7 +91,7 @@ contract CultureIndexAccessControlTest is CultureIndexTestSuite {
 
         // Attempt to drop the top-voted piece, should succeed
         vm.startPrank(address(revolutionToken));
-        ICultureIndex.ArtPiece memory droppedPiece = cultureIndex.dropTopVotedPiece();
-        assertTrue(droppedPiece.isDropped, "Top voted piece should be dropped");
+        ICultureIndex.ArtPieceCondensed memory droppedPiece = cultureIndex.dropTopVotedPiece();
+        assertTrue(cultureIndex.getPieceById(droppedPiece.pieceId).isDropped, "Top voted piece should be dropped");
     }
 }
